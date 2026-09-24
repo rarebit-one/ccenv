@@ -1,0 +1,25 @@
+# ccenv contributor guide
+
+`ccenv` is a small Go CLI that selects a Claude Code profile from the nearest
+`.ccenv` file or a global default. It must keep each profile's config directory
+and login isolated.
+
+## Development
+
+Run `go test -race ./...`, `go vet ./...`, and `go build ./...` before pushing.
+CI also checks `gofmt`. The integration test builds the CLI and uses a fake
+Claude executable; tests must not read real profile directories or contact
+Anthropic.
+
+## Behavior to preserve
+
+- An invalid or unknown `.ccenv` must stop selection rather than fall back to
+  another account.
+- Launch must verify the active Claude account against the identity recorded
+  for the profile. Do not copy, swap, or store credentials in the global config.
+- Arguments after `ccenv run --` must reach Claude unchanged.
+- The interactive `cc` Bash function belongs in `ccenv init bash`; the bare
+  `ccenv run --` command must work without shell setup.
+
+See [docs/behavior.md](docs/behavior.md) for detailed selection and
+verification rules. Update it and the tests when behavior changes.
