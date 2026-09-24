@@ -83,9 +83,12 @@ The global config stores directory paths, account emails, and organization IDs, 
 ## Development
 
 ```sh
-go test ./...
+go test -race ./...
 go vet ./...
+go build ./...
 ```
 
 The end-to-end test builds `ccenv` and uses a fake Claude executable. It does not contact Anthropic or read your real profile directories.
-GitHub Actions runs the tests with the race detector, `go vet`, and a build on pushes and pull requests.
+GitHub Actions checks formatting, runs those commands on pushes and pull requests,
+and uses Rarebit's shared action-pinning gate on pull requests. Dependabot
+checks Go modules and GitHub Actions weekly.
