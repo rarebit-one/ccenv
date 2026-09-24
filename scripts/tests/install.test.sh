@@ -36,6 +36,11 @@ if [[ "$1 $2" == 'release view' ]]; then
   printf 'v0.1.1\n'
 elif [[ "$1 $2" == 'release download' ]]; then
   printf 'download %s\n' "$3" >> "$CCENV_TEST_LOG"
+  if [[ "${CCENV_TEST_FAIL_ONCE:-}" == 1 && ! -e "$CCENV_TEST_RETRY_MARKER" ]]; then
+    touch "$CCENV_TEST_RETRY_MARKER"
+    printf 'simulated transient failure\n' >&2
+    exit 1
+  fi
   shift 3
   assets=()
   dir=
@@ -44,6 +49,7 @@ elif [[ "$1 $2" == 'release download' ]]; then
       -R) shift 2 ;;
       -p) assets+=("$2"); shift 2 ;;
       -D) dir=$2; shift 2 ;;
+      --clobber) shift ;;
       *) exit 2 ;;
     esac
   done
@@ -60,6 +66,7 @@ EOF
 chmod +x "$fakebin/gh"
 
 export CCENV_TEST_FIXTURE="$fixture" CCENV_TEST_LOG="$root/gh.log"
+export CCENV_TEST_RETRY_MARKER="$root/retried"
 export PATH="$fakebin:$PATH"
 installer="$repo_dir/scripts/install.sh"
 
@@ -71,6 +78,11 @@ cmp "$fixture/ccenv" "$root/bin/ccenv"
 : > "$root/gh.log"
 bash "$installer" --version 0.1.1 --bin-dir "$root/bin" > "$root/output"
 [[ "$(cat "$root/gh.log")" == 'download v0.1.1' ]]
+
+: > "$root/gh.log"
+CCENV_TEST_FAIL_ONCE=1 bash "$installer" --bin-dir "$root/bin" > "$root/output" 2>&1
+[[ "$(cat "$root/gh.log")" == $'view\ndownload v0.1.1\ndownload v0.1.1' ]]
+cmp "$fixture/ccenv" "$root/bin/ccenv"
 
 printf 'existing binary\n' > "$root/bin/ccenv"
 if CCENV_TEST_BAD_SUM=1 bash "$installer" --bin-dir "$root/bin" > "$root/output" 2>&1; then

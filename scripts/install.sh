@@ -81,8 +81,20 @@ fi
 archive="ccenv_${tag#v}_${os}_${arch}.tar.gz"
 umask 077
 tmpdir="$(mktemp -d)" || fail 'cannot create a temporary directory'
-gh release download "$tag" -R "$repo" -p "$archive" -p checksums.txt -D "$tmpdir" ||
-  fail "cannot download $archive from $tag"
+downloaded=false
+for attempt in 1 2 3; do
+  if gh release download "$tag" -R "$repo" -p "$archive" -p checksums.txt \
+    -D "$tmpdir" --clobber > "$tmpdir/download.log" 2>&1; then
+    downloaded=true
+    break
+  fi
+  if ((attempt < 3)); then
+    printf 'ccenv installer: download failed; retrying (%d/3)\n' "$attempt" >&2
+    sleep "$attempt"
+  fi
+done
+[[ "$downloaded" == true ]] ||
+  fail "cannot download $archive from $tag after 3 attempts; check gh auth status and network access"
 [[ -f "$tmpdir/$archive" && -f "$tmpdir/checksums.txt" ]] ||
   fail 'the release is missing the archive or checksums'
 
