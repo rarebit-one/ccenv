@@ -220,10 +220,47 @@ func expandPath(p string) (string, error) {
 }
 
 func claudeBinary() (string, error) {
-	if p := os.Getenv("CCENV_CLAUDE_BIN"); p != "" {
+	p := os.Getenv("CCENV_CLAUDE_BIN")
+	if p == "" {
+		p = "claude"
+	}
+	if !strings.ContainsRune(p, os.PathSeparator) {
+		var err error
+		p, err = exec.LookPath(p)
+		if err != nil {
+			return "", err
+		}
+	}
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return "", err
+	}
+	if filepath.Base(resolved) != "mise" {
 		return p, nil
 	}
-	return exec.LookPath("claude")
+	// A mise shim reapplies the project's environment when invoked, which can
+	// replace our selected CLAUDE_CONFIG_DIR. Resolve the installed tool first.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, resolved, "which", "claude").Output()
+	if err != nil {
+		return "", fmt.Errorf("resolve Claude Code through mise: %w", err)
+	}
+	real := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(real) {
+		return "", fmt.Errorf("mise returned a non-absolute Claude Code path %q", real)
+	}
+	if _, err := exec.LookPath(real); err != nil {
+		return "", fmt.Errorf("mise returned unusable Claude Code path %q: %w", real, err)
+	}
+	realTarget, err := filepath.EvalSymlinks(real)
+	if err != nil {
+		return "", err
+	}
+	if realTarget == resolved {
+		return "", fmt.Errorf("mise returned its own Claude Code shim %q", real)
+	}
+	return real, nil
 }
 
 func withConfigDir(env []string, dir string) []string {
