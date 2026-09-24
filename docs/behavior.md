@@ -43,6 +43,12 @@ This file contains account identifiers and paths, but no login tokens. New confi
 4. Require a logged-in `claude.ai` account. Unless `--ignore-pin` was passed, require its email and organization to match the selected profile's pin.
 5. Replace the caller's `CLAUDE_CONFIG_DIR` with the selected directory and execute Claude Code with the supplied arguments.
 
+When `claude` on `PATH` is a symlink to `mise`, `ccenv` resolves the installed
+Claude Code binary using `mise which claude` before the auth check and launch.
+Running the shim itself would reapply the project's `mise.toml` environment and
+could overwrite the selected `CLAUDE_CONFIG_DIR`. `CCENV_CLAUDE_BIN` remains an
+explicit executable override.
+
 The environment check covers `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_REFRESH_TOKEN`, and the listed `CLAUDE_CODE_USE_*` cloud-provider switches in the source. Other Claude settings, including project settings and managed settings, are resolved by Claude Code itself.
 
 `ccenv check` checks every registered profile and reports identity mismatches. Among profiles that pass verification, it also reports names that share the same email and organization. Duplicate identity is a warning rather than a failure because it can be intentional.

@@ -64,6 +64,12 @@ eval "$(ccenv init bash)"
 
 Open a new shell or source `~/.bashrc`, then run `ccenv init bash` to inspect the function if desired. `cc` is already the conventional C compiler command. The Bash function applies only to the shell that loads it, so builds and scripts can continue to use `/usr/bin/cc`. In that shell, `command cc` bypasses the function and runs the C compiler. `ccenv run --` works without shell setup.
 
+If `claude` resolves to a `mise` shim, `ccenv` asks `mise which claude` for the
+installed executable and launches it directly. This keeps a project's `mise.toml`
+from replacing the selected `CLAUDE_CONFIG_DIR`. The same resolution applies
+when `CCENV_CLAUDE_BIN` explicitly points to a `mise` shim; for other wrappers,
+point it at the real Claude Code executable.
+
 ## Configure existing profiles
 
 Register the directories you already use, without moving them:

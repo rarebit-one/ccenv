@@ -64,6 +64,43 @@ for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
 	}
 
 	mustRun(root, "add", "work", work)
+	shimDir := filepath.Join(root, "shims")
+	if err := os.Mkdir(shimDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	fakeMise := filepath.Join(root, "mise")
+	miseScript := `#!/bin/sh
+if [ "$1" = which ] && [ "$2" = claude ]; then
+  printf '%s\n' "$FAKE_REAL_CLAUDE"
+  exit 0
+fi
+CLAUDE_CONFIG_DIR=/wrong-shim-profile exec "$FAKE_REAL_CLAUDE" "$@"
+`
+	if err := os.WriteFile(fakeMise, []byte(miseScript), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(fakeMise, filepath.Join(shimDir, "claude")); err != nil {
+		t.Fatal(err)
+	}
+	shimEnv := make([]string, 0, len(env)+2)
+	for _, item := range env {
+		if !strings.HasPrefix(item, "CCENV_CLAUDE_BIN=") && !strings.HasPrefix(item, "PATH=") {
+			shimEnv = append(shimEnv, item)
+		}
+	}
+	shimEnv = append(shimEnv, "PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"), "FAKE_REAL_CLAUDE="+fakeClaude)
+	shimRun := exec.Command(bin, "run", "--profile", "work", "--", "-c")
+	shimRun.Dir = root
+	shimRun.Env = shimEnv
+	if output, err := shimRun.CombinedOutput(); err != nil || !strings.Contains(string(output), "DIR="+work+"\nARG=-c\n") {
+		t.Fatalf("mise shim must not override config dir: err=%v, output=%s", err, output)
+	}
+	shimExplicit := exec.Command(bin, "run", "--profile", "work", "--", "-c")
+	shimExplicit.Dir = root
+	shimExplicit.Env = append(shimEnv, "CCENV_CLAUDE_BIN="+filepath.Join(shimDir, "claude"))
+	if output, err := shimExplicit.CombinedOutput(); err != nil || !strings.Contains(string(output), "DIR="+work+"\nARG=-c\n") {
+		t.Fatalf("explicit mise shim must not override config dir: err=%v, output=%s", err, output)
+	}
 	if output := mustRun(root, "version"); !strings.HasPrefix(output, "ccenv ") {
 		t.Fatalf("version output: %s", output)
 	}
