@@ -34,3 +34,7 @@ instructions in `README.md` in sync. Test the release configuration with
 before tagging. Run `bash scripts/tests/install.test.sh` after changing the
 installer; CI exercises it on both Linux and macOS. Keep `scripts/install.sh`
 as a release asset and include it in `checksums.txt`.
+GitHub release immutability is enabled for this repository. GoReleaser uploads
+assets while the release is a draft, then publishes it. Keep the GoReleaser
+version pinned in both test and release workflows. The installer verifies the
+release attestation for immutable releases.

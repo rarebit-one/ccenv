@@ -32,8 +32,13 @@ cat > "$fakebin/gh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "$1 $2" == 'release view' ]]; then
-  printf 'view\n' >> "$CCENV_TEST_LOG"
-  printf 'v0.1.1\n'
+  if [[ "$3" == -R ]]; then
+    printf 'view\n' >> "$CCENV_TEST_LOG"
+    printf 'v0.1.1\n'
+  else
+    printf 'immutability\n' >> "$CCENV_TEST_LOG"
+    printf '%s\n' "${CCENV_TEST_IMMUTABLE:-true}"
+  fi
 elif [[ "$1 $2" == 'release download' ]]; then
   printf 'download %s\n' "$3" >> "$CCENV_TEST_LOG"
   if [[ "${CCENV_TEST_FAIL_ONCE:-}" == 1 && ! -e "$CCENV_TEST_RETRY_MARKER" ]]; then
@@ -59,6 +64,9 @@ elif [[ "$1 $2" == 'release download' ]]; then
   if [[ "${CCENV_TEST_BAD_SUM:-}" == 1 ]]; then
     printf '%064d  %s\n' 0 "${assets[0]}" > "$dir/checksums.txt"
   fi
+elif [[ "$1 $2" == 'release verify-asset' ]]; then
+  printf 'verify\n' >> "$CCENV_TEST_LOG"
+  [[ "${CCENV_TEST_BAD_ATTEST:-}" != 1 ]]
 else
   exit 2
 fi
@@ -72,17 +80,22 @@ installer="$repo_dir/scripts/install.sh"
 
 bash "$installer" --bin-dir "$root/bin" > "$root/output"
 cmp "$fixture/ccenv" "$root/bin/ccenv"
-[[ "$(cat "$root/gh.log")" == $'view\ndownload v0.1.1' ]]
+[[ "$(cat "$root/gh.log")" == $'view\ndownload v0.1.1\nimmutability\nverify' ]]
 [[ "$(stat -c %a "$root/bin/ccenv" 2>/dev/null || stat -f %Lp "$root/bin/ccenv")" == 755 ]]
 
 : > "$root/gh.log"
 bash "$installer" --version 0.1.1 --bin-dir "$root/bin" > "$root/output"
-[[ "$(cat "$root/gh.log")" == 'download v0.1.1' ]]
+[[ "$(cat "$root/gh.log")" == $'download v0.1.1\nimmutability\nverify' ]]
 
 : > "$root/gh.log"
 CCENV_TEST_FAIL_ONCE=1 bash "$installer" --bin-dir "$root/bin" > "$root/output" 2>&1
-[[ "$(cat "$root/gh.log")" == $'view\ndownload v0.1.1\ndownload v0.1.1' ]]
+[[ "$(cat "$root/gh.log")" == $'view\ndownload v0.1.1\ndownload v0.1.1\nimmutability\nverify' ]]
 cmp "$fixture/ccenv" "$root/bin/ccenv"
+
+: > "$root/gh.log"
+CCENV_TEST_IMMUTABLE=false bash "$installer" --bin-dir "$root/bin" > "$root/output" 2>&1
+[[ "$(cat "$root/gh.log")" == $'view\ndownload v0.1.1\nimmutability' ]]
+grep -q 'checksum verified only' "$root/output"
 
 printf 'existing binary\n' > "$root/bin/ccenv"
 if CCENV_TEST_BAD_SUM=1 bash "$installer" --bin-dir "$root/bin" > "$root/output" 2>&1; then
@@ -91,6 +104,13 @@ if CCENV_TEST_BAD_SUM=1 bash "$installer" --bin-dir "$root/bin" > "$root/output"
 fi
 [[ "$(cat "$root/bin/ccenv")" == 'existing binary' ]]
 grep -q 'checksum mismatch' "$root/output"
+
+if CCENV_TEST_BAD_ATTEST=1 bash "$installer" --bin-dir "$root/bin" > "$root/output" 2>&1; then
+  echo 'attestation failure should stop installation' >&2
+  exit 1
+fi
+[[ "$(cat "$root/bin/ccenv")" == 'existing binary' ]]
+grep -q 'attestation verification failed' "$root/output"
 
 bad_version="\$(touch $root/pwned)"
 if bash "$installer" --version "$bad_version" --bin-dir "$root/bin" > "$root/output" 2>&1; then

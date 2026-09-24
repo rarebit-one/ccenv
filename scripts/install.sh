@@ -109,6 +109,20 @@ else
 fi
 [[ "$actual" == "$expected" ]] || fail "checksum mismatch for $archive"
 
+immutable="$(gh release view "$tag" -R "$repo" --json isImmutable --jq '.isImmutable' \
+  2> "$tmpdir/release.log")" || fail "cannot verify release metadata for $tag"
+case "$immutable" in
+  true)
+    gh release verify-asset "$tag" "$tmpdir/$archive" -R "$repo" \
+      > "$tmpdir/attestation.log" 2>&1 ||
+      fail "release attestation verification failed for $archive; update gh and check the release"
+    ;;
+  false)
+    printf 'ccenv installer: %s predates immutable releases; checksum verified only\n' "$tag" >&2
+    ;;
+  *) fail "unexpected release immutability status for $tag" ;;
+esac
+
 tar -xzOf "$tmpdir/$archive" ccenv > "$tmpdir/ccenv" ||
   fail "cannot extract ccenv from $archive"
 [[ -s "$tmpdir/ccenv" ]] || fail "the archive contains an empty ccenv binary"

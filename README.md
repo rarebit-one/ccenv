@@ -48,7 +48,9 @@ the GitHub CLI, then replaces only the `ccenv` binary. The checksum detects a
 damaged or altered archive, but it does not independently authenticate a
 compromised GitHub release; the repository and authenticated GitHub connection
 remain the trust boundary. Transient download failures are retried three times;
-the installed binary is left alone if all attempts fail.
+the installed binary is left alone if all attempts fail. Releases after v0.1.2
+are immutable on GitHub, and the installer also verifies their GitHub release
+attestation. Older releases get checksum verification only.
 
 Ensure `~/.local/bin` is on your `PATH`. Add this to `~/.bashrc` to make `cc`
 your interactive launch command:
@@ -133,4 +135,6 @@ checks Go modules and GitHub Actions weekly.
 Pushing a `vX.Y.Z` tag on `main` runs the release workflow. It verifies the tag
 is on `main`, runs the Go checks, and publishes Linux and macOS archives plus
 SHA-256 checksums and `install.sh` to [GitHub Releases](https://github.com/rarebit-one/ccenv/releases).
-Release configuration lives in `.goreleaser.yaml`.
+Release configuration lives in `.goreleaser.yaml`. GitHub release immutability
+protects future releases from asset replacement and tag movement after
+publication; it does not apply retroactively to v0.1.0–v0.1.2.
