@@ -23,3 +23,12 @@ Anthropic.
 
 See [docs/behavior.md](docs/behavior.md) for detailed selection and
 verification rules. Update it and the tests when behavior changes.
+
+## Releases
+
+The module root is an installable Go command. A `vX.Y.Z` tag on `main` triggers
+GoReleaser to publish Linux and macOS archives and checksums. Keep
+`.goreleaser.yaml`, `.github/workflows/release.yml`, and the installation
+instructions in `README.md` in sync. Test the release configuration with
+`goreleaser check` and `goreleaser release --snapshot --clean --skip=publish`
+before tagging.
