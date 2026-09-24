@@ -2,24 +2,26 @@
 
 `ccenv` launches Claude Code with the right existing login for the current directory. Each profile points at its own `CLAUDE_CONFIG_DIR`; credentials, settings, plugins, and session history stay in their original directories. It never copies or swaps credentials.
 
-The selected profile comes from the nearest `.ccenv` in the current directory or any parent. If there is no dotfile, `ccenv` uses the global default. An invalid or unknown dotfile stops the launch instead of silently choosing another account. Before launching, `ccenv` asks Claude Code for its authentication status and checks the email and organization recorded when the profile was added.
+The selected profile comes from the nearest `.ccenv` in the current directory or any parent. If there is no dotfile, `ccenv` uses the global default. An invalid or unknown dotfile stops the launch instead of silently choosing another account. Before launching, `ccenv` asks Claude Code for its authentication status and checks the email and organization recorded when the profile was added. See [selection and verification behavior](docs/behavior.md) for the exact rules.
 
 ## Install
 
-Requires Go 1.23 or newer and an installed `claude` command.
+Requires Go 1.23 or newer, an installed `claude` command, and a Unix-like OS. The current implementation is tested on Linux.
 
 ```sh
+git clone https://github.com/rarebit-one/ccenv.git
+cd ccenv
 go build -o ccenv .
 install -m 755 ccenv ~/.local/bin/ccenv
 ```
 
-Add this to `~/.bashrc` to make `cc` your interactive launch command:
+Ensure `~/.local/bin` is on your `PATH`. Add this to `~/.bashrc` to make `cc` your interactive launch command:
 
 ```sh
 eval "$(ccenv init bash)"
 ```
 
-`cc` is already the conventional C compiler command. The Bash function applies only to your interactive shell, so builds and scripts can continue to use `/usr/bin/cc`. `ccenv run --` also works without shell setup.
+Open a new shell or source `~/.bashrc`, then run `ccenv init bash` to inspect the function if desired. `cc` is already the conventional C compiler command. The Bash function applies only to the shell that loads it, so builds and scripts can continue to use `/usr/bin/cc`. In that shell, `command cc` bypasses the function and runs the C compiler. `ccenv run --` works without shell setup.
 
 ## Configure existing profiles
 
@@ -32,7 +34,7 @@ ccenv default personal
 ccenv check
 ```
 
-`add` records the account's current email and organization. Check its output before binding projects: if a directory is logged into the wrong account, sign in correctly using `CLAUDE_CONFIG_DIR=<directory> claude auth login`, then run `ccenv refresh <name>` to pin the corrected login. `ccenv check` reports profile identity changes and flags profiles that currently point to the same account.
+`add` records the account's current email and organization. Check its output before binding projects: if a directory is logged into the wrong account, sign in correctly using `CLAUDE_CONFIG_DIR=<directory> claude auth login`, then run `ccenv refresh <name>` to pin the corrected login. `ccenv check` reports profile identity changes and flags profiles that currently point to the same account. Duplicate accounts are reported but do not make `check` fail, since several profile names may intentionally use one login.
 
 In a project, run `ccenv local work` to write a one-line `.ccenv` file:
 
@@ -40,7 +42,7 @@ In a project, run `ccenv local work` to write a one-line `.ccenv` file:
 work
 ```
 
-That selector applies to the project and its descendants. A closer `.ccenv` overrides it. Profile names are local to your machine, so decide whether to commit the selector to a shared repository.
+That selector applies to the project and its descendants. A closer `.ccenv` overrides it. Profile names are local to your machine, so decide whether to commit the selector to a shared repository. You can put one in a parent folder that holds several repositories.
 
 ```sh
 cc                 # launch Claude Code using the selected profile
@@ -50,7 +52,24 @@ ccenv list         # list profiles; * marks the global default
 ccenv run --profile work -- -p 'hello'  # one-off override
 ```
 
-`ccenv` refuses to launch when common API-key, OAuth-token, gateway, or cloud-provider environment variables are set, because they can bypass the subscription selected by the profile.
+If no `.ccenv` and no global default exist, `cc` stops with an error. Run `ccenv default <name>` to set the fallback. The explicit `--profile` option works even when a local selector is invalid, so you can still launch a chosen profile while fixing the dotfile.
+
+## Commands
+
+| Command | Effect |
+| --- | --- |
+| `ccenv add NAME DIR` | Register an existing logged-in Claude config directory and pin its current account identity. |
+| `ccenv refresh NAME` | Re-pin the account identity after you intentionally sign into that directory again. |
+| `ccenv default NAME` | Set the profile used when no project selector exists. |
+| `ccenv local NAME` | Write `.ccenv` in the current directory. |
+| `ccenv current` | Show the selected name, config directory, and source of the selection. |
+| `ccenv list` | List profiles; `*` marks the global default. |
+| `ccenv check` | Verify every registered login and report profiles using the same account. |
+| `ccenv run -- [CLAUDE_ARGS...]` | Launch Claude with the selected profile, forwarding arguments unchanged. |
+| `ccenv run --profile NAME -- [CLAUDE_ARGS...]` | Launch once with an explicit profile. |
+| `ccenv init bash` | Print the interactive `cc` shell function. |
+
+`ccenv` refuses to launch when common API-key, OAuth-token, gateway, or cloud-provider environment variables are set, because they can bypass the subscription selected by the profile. Run `ccenv current` if the selected profile is surprising, and `ccenv check` if Claude reports the wrong login.
 
 ## Files and overrides
 
@@ -59,4 +78,14 @@ ccenv run --profile work -- -p 'hello'  # one-off override
 - `CCENV_CONFIG`: use a different global config path, useful for testing.
 - `CCENV_CLAUDE_BIN`: explicit path to the Claude Code executable, if it is not discoverable on `PATH`.
 
-`ccenv` checks account identity at launch, but it cannot tell whether an account was already wrong when you registered it. Claude Code also applies project settings independently of the selected user config directory.
+The global config stores directory paths, account emails, and organization IDs, but no tokens. It is written with mode `0600`. `ccenv` checks account identity at launch, but it cannot tell whether an account was already wrong when you registered it. Claude Code also applies project settings independently of the selected user config directory. The `cc` shell function covers terminal launches; other programs that start Claude directly need their own `ccenv run` integration.
+
+## Development
+
+```sh
+go test ./...
+go vet ./...
+```
+
+The end-to-end test builds `ccenv` and uses a fake Claude executable. It does not contact Anthropic or read your real profile directories.
+GitHub Actions runs the tests with the race detector, `go vet`, and a build on pushes and pull requests.

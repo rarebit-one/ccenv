@@ -234,7 +234,7 @@ func getAuth(dir string) (authStatus, error) {
 		return s, fmt.Errorf("parse Claude auth status: %w", err)
 	}
 	if !s.LoggedIn || s.Email == "" || s.OrgID == "" || s.AuthMethod != "claude.ai" {
-		return s, fmt.Errorf("%s is not logged in to a Claude subscription", dir)
+		return s, fmt.Errorf("%s is not logged in with a claude.ai account", dir)
 	}
 	return s, nil
 }
@@ -469,10 +469,17 @@ func check() error {
 			failed = true
 		} else {
 			fmt.Printf("OK   %-16s %s\n", n, p.Email)
+			key := p.Email + "\x00" + p.OrgID
+			identities[key] = append(identities[key], n)
 		}
-		identities[p.Email+"\x00"+p.OrgID] = append(identities[p.Email+"\x00"+p.OrgID], n)
 	}
-	for _, group := range identities {
+	keys := make([]string, 0, len(identities))
+	for key := range identities {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		group := identities[key]
 		if len(group) > 1 {
 			fmt.Printf("SAME ACCOUNT: %s\n", strings.Join(group, ", "))
 		}
