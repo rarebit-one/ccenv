@@ -65,6 +65,11 @@ func dispatch(args []string) error {
 			return errors.New("usage: ccenv add <name> <existing-config-dir>")
 		}
 		return add(args[1], args[2])
+	case "refresh":
+		if len(args) != 2 {
+			return errors.New("usage: ccenv refresh <name>")
+		}
+		return refresh(args[1])
 	case "default":
 		if len(args) != 2 {
 			return errors.New("usage: ccenv default <name>")
@@ -104,6 +109,7 @@ func usage() {
 	fmt.Print(`ccenv selects a Claude Code login from the nearest .ccenv or a global default.
 
   ccenv add <name> <existing-config-dir>  Register and pin a logged-in profile
+  ccenv refresh <name>                    Pin the profile's current login after re-authentication
   ccenv default <name>                    Set the global fallback
   ccenv local <name>                      Write .ccenv in the current directory
   ccenv current                           Show the selected profile and source
@@ -261,6 +267,28 @@ func add(name, dir string) error {
 		return err
 	}
 	fmt.Printf("Added %s → %s (%s, org %s)\n", name, dir, s.Email, s.OrgID)
+	return nil
+}
+
+func refresh(name string) error {
+	c, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	p, err := requireProfile(c, name)
+	if err != nil {
+		return err
+	}
+	s, err := getAuth(p.Dir)
+	if err != nil {
+		return err
+	}
+	p.Email, p.OrgID = s.Email, s.OrgID
+	c.Profiles[name] = p
+	if err := saveConfig(c); err != nil {
+		return err
+	}
+	fmt.Printf("Refreshed %s: %s, org %s\n", name, p.Email, p.OrgID)
 	return nil
 }
 
