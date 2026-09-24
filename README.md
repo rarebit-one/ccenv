@@ -33,8 +33,10 @@ SHA-256 checksum, and installs it into `~/.local/bin`:
 
 ```sh
 gh auth login            # skip if already authenticated
-gh release download -R rarebit-one/ccenv -p install.sh \
+tag="$(gh release view -R rarebit-one/ccenv --json tagName --jq .tagName)"
+gh release download "$tag" -R rarebit-one/ccenv -p install.sh \
   -O ./ccenv-install.sh --clobber
+gh release verify-asset "$tag" ./ccenv-install.sh -R rarebit-one/ccenv
 less ./ccenv-install.sh
 bash ./ccenv-install.sh
 ccenv version
@@ -44,7 +46,8 @@ Run `bash ./ccenv-install.sh` again to update. Use `--version v0.1.0` to pin a
 release or `--bin-dir DIR` to choose another install directory. The installer
 does not use sudo, edit shell files, read Claude profiles, or enable automatic
 updates or telemetry. It downloads one release archive and its checksum through
-the GitHub CLI, then replaces only the `ccenv` binary. The checksum detects a
+the GitHub CLI, verifies the release attestation for immutable releases, then
+replaces only the `ccenv` binary. The checksum detects a
 damaged or altered archive, but it does not independently authenticate a
 compromised GitHub release; the repository and authenticated GitHub connection
 remain the trust boundary. Transient download failures are retried three times;
