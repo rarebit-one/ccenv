@@ -4,18 +4,46 @@
 
 The selected profile comes from the nearest `.ccenv` in the current directory or any parent. If there is no dotfile, `ccenv` uses the global default. An invalid or unknown dotfile stops the launch instead of silently choosing another account. Before launching, `ccenv` asks Claude Code for its authentication status and checks the email and organization recorded when the profile was added. See [selection and verification behavior](docs/behavior.md) for the exact rules.
 
-## Install
+## Install and update
 
-Requires Go 1.23 or newer, an installed `claude` command, and a Unix-like OS. The current implementation is tested on Linux.
+You need an installed `claude` command and a Linux or macOS machine. This is a
+private repository, so both install methods require read access to
+`rarebit-one/ccenv` and GitHub authentication. Linux is covered by CI; macOS
+binaries are built for both Apple Silicon and Intel.
+
+**With Go 1.23 or newer**, authenticate Git for the private module, then install
+the latest tagged release into `~/.local/bin`:
 
 ```sh
-git clone https://github.com/rarebit-one/ccenv.git
-cd ccenv
-go build -o ccenv .
-install -m 755 ccenv ~/.local/bin/ccenv
+gh auth login            # skip if already authenticated
+gh auth setup-git        # lets Go's Git fetch use your gh login over HTTPS
+mkdir -p "$HOME/.local/bin"
+GOBIN="$HOME/.local/bin" GOPRIVATE=github.com/rarebit-one/ccenv \
+  go install github.com/rarebit-one/ccenv@latest
+ccenv version
 ```
 
-Ensure `~/.local/bin` is on your `PATH`. Add this to `~/.bashrc` to make `cc` your interactive launch command:
+Run the same `go install` command again to update. To pin a version, replace
+`@latest` with a tag such as `@v0.1.0`. `GOPRIVATE` keeps this private module
+away from the public Go module proxy and checksum database.
+
+**Without Go**, download the latest prebuilt archive with the authenticated
+GitHub CLI. This example is for Linux on x86-64; use `linux_arm64`,
+`darwin_amd64`, or `darwin_arm64` in the pattern for another machine:
+
+```sh
+gh auth login            # skip if already authenticated
+tmpdir="$(mktemp -d)"
+gh release download -R rarebit-one/ccenv \
+  -p 'ccenv_*_linux_amd64.tar.gz' -D "$tmpdir"
+tar -xzf "$tmpdir"/ccenv_*_linux_amd64.tar.gz -C "$tmpdir" ccenv
+mkdir -p "$HOME/.local/bin"
+install -m 755 "$tmpdir/ccenv" "$HOME/.local/bin/ccenv"
+ccenv version
+```
+
+Repeat the download and install steps to update. Ensure `~/.local/bin` is on
+your `PATH`. Add this to `~/.bashrc` to make `cc` your interactive launch command:
 
 ```sh
 eval "$(ccenv init bash)"
@@ -68,6 +96,7 @@ If no `.ccenv` and no global default exist, `cc` stops with an error. Run `ccenv
 | `ccenv run -- [CLAUDE_ARGS...]` | Launch Claude with the selected profile, forwarding arguments unchanged. |
 | `ccenv run --profile NAME -- [CLAUDE_ARGS...]` | Launch once with an explicit profile. |
 | `ccenv init bash` | Print the interactive `cc` shell function. |
+| `ccenv version` | Print the installed version. |
 
 `ccenv` refuses to launch when common API-key, OAuth-token, gateway, or cloud-provider environment variables are set, because they can bypass the subscription selected by the profile. Run `ccenv current` if the selected profile is surprising, and `ccenv check` if Claude reports the wrong login.
 
@@ -92,3 +121,8 @@ The end-to-end test builds `ccenv` and uses a fake Claude executable. It does no
 GitHub Actions checks formatting, runs those commands on pushes and pull requests,
 and uses Rarebit's shared action-pinning gate on pull requests. Dependabot
 checks Go modules and GitHub Actions weekly.
+
+Pushing a `vX.Y.Z` tag on `main` runs the release workflow. It verifies the tag
+is on `main`, runs the Go checks, and publishes Linux and macOS archives plus
+SHA-256 checksums to [GitHub Releases](https://github.com/rarebit-one/ccenv/releases).
+Release configuration lives in `.goreleaser.yaml`.

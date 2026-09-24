@@ -1,0 +1,28 @@
+version: 2
+project_name: ccenv
+
+builds:
+  - id: ccenv
+    main: .
+    binary: ccenv
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - docs/behavior.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github-native
+
+release:
+  prerelease: auto

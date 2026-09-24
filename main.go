@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"syscall"
@@ -41,6 +42,20 @@ type selection struct {
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
+// GoReleaser sets version for release binaries. Go-installed binaries get their
+// module version from Go build information instead.
+var version = "dev"
+
+func buildVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return strings.TrimPrefix(info.Main.Version, "v")
+	}
+	return version
+}
+
 func main() {
 	if err := dispatch(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "ccenv:", err)
@@ -54,6 +69,12 @@ func dispatch(args []string) error {
 		return nil
 	}
 	switch args[0] {
+	case "version", "--version":
+		if len(args) != 1 {
+			return errors.New("usage: ccenv version")
+		}
+		fmt.Println("ccenv", buildVersion())
+		return nil
 	case "init":
 		if len(args) != 2 || args[1] != "bash" {
 			return errors.New("usage: ccenv init bash")
@@ -117,6 +138,7 @@ func usage() {
   ccenv check                             Verify logins and flag duplicate accounts
   ccenv run [--profile <name>] -- [args]  Launch Claude Code
   ccenv init bash                         Print the interactive cc shell function
+  ccenv version                           Print the installed version
 `)
 }
 

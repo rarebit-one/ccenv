@@ -64,6 +64,9 @@ for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
 	}
 
 	mustRun(root, "add", "work", work)
+	if output := mustRun(root, "version"); !strings.HasPrefix(output, "ccenv ") {
+		t.Fatalf("version output: %s", output)
+	}
 	mustRun(root, "add", "personal", personal)
 	unauthed := filepath.Join(root, "unauthed-config")
 	if err := os.Mkdir(unauthed, 0700); err != nil {
