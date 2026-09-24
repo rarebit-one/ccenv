@@ -47,7 +47,8 @@ updates or telemetry. It downloads one release archive and its checksum through
 the GitHub CLI, then replaces only the `ccenv` binary. The checksum detects a
 damaged or altered archive, but it does not independently authenticate a
 compromised GitHub release; the repository and authenticated GitHub connection
-remain the trust boundary.
+remain the trust boundary. Transient download failures are retried three times;
+the installed binary is left alone if all attempts fail.
 
 Ensure `~/.local/bin` is on your `PATH`. Add this to `~/.bashrc` to make `cc`
 your interactive launch command:
