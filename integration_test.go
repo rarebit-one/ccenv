@@ -103,6 +103,19 @@ for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
 	if output, err := call(nested, "run", "--", "-c"); err == nil || !strings.Contains(output, "identity changed") || strings.Contains(output, "DIR=") {
 		t.Fatalf("changed login should stop launch: err=%v, output=%s", err, output)
 	}
+	if output := mustRun(nested, "run", "--ignore-pin", "--", "-c"); !strings.Contains(output, "pin bypassed for personal: Claude reports changed@example.test / changed-org") || !strings.Contains(output, "DIR="+personal+"\nARG=-c\n") {
+		t.Fatalf("one-run pin bypass: %s", output)
+	}
+	if output, err := call(nested, "run", "--", "-c"); err == nil || !strings.Contains(output, "identity changed") || strings.Contains(output, "DIR=") {
+		t.Fatalf("pin bypass should not persist: err=%v, output=%s", err, output)
+	}
+	if err := os.WriteFile(filepath.Join(personal, "status.json"), []byte(`{"loggedIn":false}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := call(nested, "run", "--ignore-pin", "--", "-c"); err == nil || !strings.Contains(output, "not logged in with a claude.ai account") || strings.Contains(output, "DIR=") {
+		t.Fatalf("pin bypass must still require a login: err=%v, output=%s", err, output)
+	}
+	writeStatus(t, personal, "changed@example.test", "changed-org")
 	mustRun(root, "refresh", "personal")
 	if output := mustRun(nested, "run", "--", "-c"); !strings.Contains(output, "DIR="+personal) {
 		t.Fatalf("refreshed login should launch: %s", output)
@@ -131,7 +144,7 @@ for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
 		t.Fatal(err)
 	}
 	env = append(env, "ANTHROPIC_API_KEY=test-only")
-	if output, err := call(root, "run", "--", "-c"); err == nil || !strings.Contains(output, "ANTHROPIC_API_KEY is set") || strings.Contains(output, "DIR=") {
+	if output, err := call(root, "run", "--ignore-pin", "--", "-c"); err == nil || !strings.Contains(output, "ANTHROPIC_API_KEY is set") || strings.Contains(output, "DIR=") {
 		t.Fatalf("API key should stop subscription launch: err=%v, output=%s", err, output)
 	}
 }

@@ -136,7 +136,8 @@ func usage() {
   ccenv current                           Show the selected profile and source
   ccenv list                              List registered profiles
   ccenv check                             Verify logins and flag duplicate accounts
-  ccenv run [--profile <name>] -- [args]  Launch Claude Code
+  ccenv run [--profile <name>] [--ignore-pin] -- [args]
+                                           Launch Claude Code
   ccenv init bash                         Print the interactive cc shell function
   ccenv version                           Print the installed version
 `)
@@ -515,6 +516,7 @@ func check() error {
 func run(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	name := fs.String("profile", "", "profile override")
+	ignorePin := fs.Bool("ignore-pin", false, "bypass the saved account identity for this launch")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -531,8 +533,14 @@ func run(args []string) error {
 			return fmt.Errorf("%s is set and may override the subscription; unset it before running cc", key)
 		}
 	}
-	if err := verify(s.Name, p); err != nil {
+	auth, err := getAuth(p.Dir)
+	if err != nil {
 		return err
+	}
+	if *ignorePin {
+		fmt.Fprintf(os.Stderr, "ccenv: pin bypassed for %s: Claude reports %s / %s for this launch\n", s.Name, auth.Email, auth.OrgID)
+	} else if auth.Email != p.Email || auth.OrgID != p.OrgID {
+		return fmt.Errorf("%s identity changed: expected %s / %s, found %s / %s", s.Name, p.Email, p.OrgID, auth.Email, auth.OrgID)
 	}
 	bin, err := claudeBinary()
 	if err != nil {

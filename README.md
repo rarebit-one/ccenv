@@ -93,6 +93,14 @@ ccenv list         # list profiles; * marks the global default
 ccenv run --profile work -- -p 'hello'  # one-off override
 ```
 
+`--profile` chooses a config directory and its pinned login for one launch. To
+launch despite a changed login, use `ccenv run --profile work --ignore-pin --`.
+This bypasses the identity pin for that launch only and prints the account
+Claude actually reports. It still requires a logged-in `claude.ai` account and
+does not change the saved pin or switch credentials. `ccenv check` will
+continue to flag the profile until its original login is restored or you
+intentionally run `ccenv refresh`.
+
 If no `.ccenv` and no global default exist, `cc` stops with an error. Run `ccenv default <name>` to set the fallback. The explicit `--profile` option works even when a local selector is invalid, so you can still launch a chosen profile while fixing the dotfile.
 
 ## Commands
@@ -108,6 +116,7 @@ If no `.ccenv` and no global default exist, `cc` stops with an error. Run `ccenv
 | `ccenv check` | Verify every registered login and report profiles using the same account. |
 | `ccenv run -- [CLAUDE_ARGS...]` | Launch Claude with the selected profile, forwarding arguments unchanged. |
 | `ccenv run --profile NAME -- [CLAUDE_ARGS...]` | Launch once with an explicit profile. |
+| `ccenv run --ignore-pin -- [CLAUDE_ARGS...]` | For one launch, bypass the selected profile's account pin while showing the reported login. |
 | `ccenv init bash` | Print the interactive `cc` shell function. |
 | `ccenv version` | Print the installed version. |
 

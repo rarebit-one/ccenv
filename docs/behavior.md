@@ -40,12 +40,17 @@ This file contains account identifiers and paths, but no login tokens. New confi
 1. Resolve the profile using the order above.
 2. Stop if a known API-key, OAuth-token, gateway, or cloud-provider variable is set in the caller's environment.
 3. Run `claude auth status --json` for that profile, with a ten-second timeout.
-4. Require a logged-in `claude.ai` account whose email and organization match the pinned values.
+4. Require a logged-in `claude.ai` account. Unless `--ignore-pin` was passed, require its email and organization to match the selected profile's pin.
 5. Replace the caller's `CLAUDE_CONFIG_DIR` with the selected directory and execute Claude Code with the supplied arguments.
 
 The environment check covers `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_REFRESH_TOKEN`, and the listed `CLAUDE_CODE_USE_*` cloud-provider switches in the source. Other Claude settings, including project settings and managed settings, are resolved by Claude Code itself.
 
 `ccenv check` checks every registered profile and reports identity mismatches. Among profiles that pass verification, it also reports names that share the same email and organization. Duplicate identity is a warning rather than a failure because it can be intentional.
+
+`--ignore-pin` bypasses the identity comparison for one launch only. It prints
+the account Claude reports before launching, even when that account matches the
+saved pin. It does not change the login, the saved pin, or the selected config
+directory. Without the flag, the selected profile's pin remains mandatory.
 
 ## Limits
 
