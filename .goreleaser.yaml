@@ -20,9 +20,13 @@ archives:
 
 checksum:
   name_template: checksums.txt
+  extra_files:
+    - glob: scripts/install.sh
 
 changelog:
   use: github-native
 
 release:
   prerelease: auto
+  extra_files:
+    - glob: scripts/install.sh

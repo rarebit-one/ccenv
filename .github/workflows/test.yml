@@ -30,6 +30,10 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - run: go build ./...
+      - name: Test the installer
+        run: |
+          bash -n scripts/install.sh scripts/tests/install.test.sh
+          bash scripts/tests/install.test.sh
       - name: Build release archives without publishing
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
@@ -37,3 +41,14 @@ jobs:
           args: release --snapshot --clean --skip=publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check installer is included in release checksums
+        run: grep -Eq '^[[:xdigit:]]{64}  install\.sh$' dist/checksums.txt
+
+  installer-macos:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: bash scripts/tests/install.test.sh
