@@ -31,4 +31,6 @@ GoReleaser to publish Linux and macOS archives and checksums. Keep
 `.goreleaser.yaml`, `.github/workflows/release.yml`, and the installation
 instructions in `README.md` in sync. Test the release configuration with
 `goreleaser check` and `goreleaser release --snapshot --clean --skip=publish`
-before tagging.
+before tagging. Run `bash scripts/tests/install.test.sh` after changing the
+installer; CI exercises it on both Linux and macOS. Keep `scripts/install.sh`
+as a release asset and include it in `checksums.txt`.

@@ -27,23 +27,30 @@ Run the same `go install` command again to update. To pin a version, replace
 `@latest` with a tag such as `@v0.1.0`. `GOPRIVATE` keeps this private module
 away from the public Go module proxy and checksum database.
 
-**Without Go**, download the latest prebuilt archive with the authenticated
-GitHub CLI. This example is for Linux on x86-64; use `linux_arm64`,
-`darwin_amd64`, or `darwin_arm64` in the pattern for another machine:
+**Without Go**, download the installer from the latest release, review it, and
+run it. The script selects the Linux or macOS binary for your CPU, verifies its
+SHA-256 checksum, and installs it into `~/.local/bin`:
 
 ```sh
 gh auth login            # skip if already authenticated
-tmpdir="$(mktemp -d)"
-gh release download -R rarebit-one/ccenv \
-  -p 'ccenv_*_linux_amd64.tar.gz' -D "$tmpdir"
-tar -xzf "$tmpdir"/ccenv_*_linux_amd64.tar.gz -C "$tmpdir" ccenv
-mkdir -p "$HOME/.local/bin"
-install -m 755 "$tmpdir/ccenv" "$HOME/.local/bin/ccenv"
+gh release download -R rarebit-one/ccenv -p install.sh \
+  -O ./ccenv-install.sh --clobber
+less ./ccenv-install.sh
+bash ./ccenv-install.sh
 ccenv version
 ```
 
-Repeat the download and install steps to update. Ensure `~/.local/bin` is on
-your `PATH`. Add this to `~/.bashrc` to make `cc` your interactive launch command:
+Run `bash ./ccenv-install.sh` again to update. Use `--version v0.1.0` to pin a
+release or `--bin-dir DIR` to choose another install directory. The installer
+does not use sudo, edit shell files, read Claude profiles, or enable automatic
+updates or telemetry. It downloads one release archive and its checksum through
+the GitHub CLI, then replaces only the `ccenv` binary. The checksum detects a
+damaged or altered archive, but it does not independently authenticate a
+compromised GitHub release; the repository and authenticated GitHub connection
+remain the trust boundary.
+
+Ensure `~/.local/bin` is on your `PATH`. Add this to `~/.bashrc` to make `cc`
+your interactive launch command:
 
 ```sh
 eval "$(ccenv init bash)"
@@ -124,5 +131,5 @@ checks Go modules and GitHub Actions weekly.
 
 Pushing a `vX.Y.Z` tag on `main` runs the release workflow. It verifies the tag
 is on `main`, runs the Go checks, and publishes Linux and macOS archives plus
-SHA-256 checksums to [GitHub Releases](https://github.com/rarebit-one/ccenv/releases).
+SHA-256 checksums and `install.sh` to [GitHub Releases](https://github.com/rarebit-one/ccenv/releases).
 Release configuration lives in `.goreleaser.yaml`.
