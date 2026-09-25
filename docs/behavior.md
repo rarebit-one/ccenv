@@ -40,8 +40,20 @@ This file contains account identifiers and paths, but no login tokens. New confi
 1. Resolve the profile using the order above.
 2. Stop if a known API-key, OAuth-token, gateway, or cloud-provider variable is set in the caller's environment.
 3. Run `claude auth status --json` for that profile, with a ten-second timeout.
-4. Require a logged-in `claude.ai` account. Unless `--ignore-pin` was passed, require its email and organization to match the selected profile's pin.
-5. Replace the caller's `CLAUDE_CONFIG_DIR` with the selected directory and execute Claude Code with the supplied arguments.
+4. Require a logged-in `claude.ai` account. Unless `--ignore-pin` was passed, require its email and organization to match the selected account profile's pin.
+5. Set `CLAUDE_CONFIG_DIR` to the selected config profile and `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the selected account profile, then execute Claude Code with the supplied arguments.
+
+By default, the config and account profiles are the same. `--profile NAME`
+chooses a config profile; `--account NAME` chooses which registered profile's
+credentials and identity pin to use for one launch. The `--account` mode needs
+Claude Code 2.1.215 or later. It uses the undocumented
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` feature, described in this
+[upstream documentation request](https://github.com/anthropics/claude-code/issues/79223).
+Because Claude Code stores account display metadata in the config directory,
+`/status` may show cached identity details from that directory when the
+credential profile differs. `ccenv` prints the selected config/account pairing
+before launch; the display limitation is tracked in this
+[upstream report](https://github.com/anthropics/claude-code/issues/79222).
 
 When `claude` on `PATH` is a symlink to `mise`, `ccenv` resolves the installed
 Claude Code binary using `mise which claude` before the auth check and launch.

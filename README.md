@@ -97,7 +97,25 @@ cc -c              # pass arguments through to Claude Code
 ccenv current      # show the profile, config directory, and selection source
 ccenv list         # list profiles; * marks the global default
 ccenv run --profile work -- -p 'hello'  # one-off override
+cc --account rarebit                   # use Rarebit credentials with this folder's config
 ```
+
+`--profile` selects the user config directory. `--account` selects the
+registered profile whose login credentials to use, while retaining the
+selected project or user config directory. From a Sidekick project, for
+example, `ccenv run --profile sidekick --account rarebit --` (or `cc --account
+rarebit` after loading the Bash function) uses Sidekick settings, memories,
+plugins, and history with credentials from the Rarebit profile. `--account`
+checks Rarebit's saved identity pin before launch. This requires Claude Code
+2.1.215 or newer and uses its currently undocumented
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` feature. See the [upstream documentation
+request](https://github.com/anthropics/claude-code/issues/79223).
+
+When the config and credential profiles differ, Claude Code's `/status` may
+show the account cached in the config directory, rather than the account tied
+to the credential store. `ccenv` prints the config/account pairing before
+launch. Treat the `/status` email as cached metadata in this mode; see the
+[upstream status report](https://github.com/anthropics/claude-code/issues/79222).
 
 `--profile` chooses a config directory and its pinned login for one launch. To
 launch despite a changed login, use `ccenv run --profile work --ignore-pin --`.
@@ -122,6 +140,7 @@ If no `.ccenv` and no global default exist, `cc` stops with an error. Run `ccenv
 | `ccenv check` | Verify every registered login and report profiles using the same account. |
 | `ccenv run -- [CLAUDE_ARGS...]` | Launch Claude with the selected profile, forwarding arguments unchanged. |
 | `ccenv run --profile NAME -- [CLAUDE_ARGS...]` | Launch once with an explicit profile. |
+| `ccenv run --account NAME -- [CLAUDE_ARGS...]` | Use the selected config with another registered profile's pinned credentials. |
 | `ccenv run --ignore-pin -- [CLAUDE_ARGS...]` | For one launch, bypass the selected profile's account pin while showing the reported login. |
 | `ccenv init bash` | Print the interactive `cc` shell function. |
 | `ccenv version` | Print the installed version. |
