@@ -20,11 +20,19 @@ func TestCLIWorkflow(t *testing.T) {
 
 	fakeClaude := filepath.Join(root, "fake-claude")
 	script := `#!/bin/sh
+if [ "$1" = --version ]; then
+  printf '%s (Claude Code)\n' "${FAKE_CLAUDE_VERSION:-2.1.282}"
+  exit 0
+fi
 if [ "$1" = auth ] && [ "$2" = status ] && [ "$3" = --json ]; then
   cat "$CLAUDE_CONFIG_DIR/status.json"
   exit $?
 fi
 printf 'DIR=%s\n' "$CLAUDE_CONFIG_DIR"
+if [ "$CLAUDE_CONFIG_DIR" != "$CLAUDE_SECURESTORAGE_CONFIG_DIR" ]; then
+  printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
+  printf 'isolated-cache-write\n' > "$CLAUDE_CONFIG_DIR/.claude.json"
+fi
 for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
 `
 	if err := os.WriteFile(fakeClaude, []byte(script), 0700); err != nil {
@@ -104,6 +112,22 @@ CLAUDE_CONFIG_DIR=/wrong-shim-profile exec "$FAKE_REAL_CLAUDE" "$@"
 	if output := mustRun(root, "version"); !strings.HasPrefix(output, "ccenv ") {
 		t.Fatalf("version output: %s", output)
 	}
+	initFile := filepath.Join(root, "cc-init.sh")
+	if err := os.WriteFile(initFile, []byte(mustRun(root, "init", "bash")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fakeCCEnv := filepath.Join(shimDir, "ccenv")
+	if err := os.WriteFile(fakeCCEnv, []byte("#!/bin/sh\nprintf 'ARG=%s\\n' \"$@\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ccEnvPath := append([]string(nil), os.Environ()...)
+	ccEnvPath = append(ccEnvPath, "PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ccShell := exec.Command("bash", "-c", `source "$1"; cc --profile personal --account rarebit --ignore-pin -- -p 'hello world'`, "bash", initFile)
+	ccShell.Dir = root
+	ccShell.Env = ccEnvPath
+	if output, err := ccShell.CombinedOutput(); err != nil || string(output) != "ARG=run\nARG=--profile\nARG=personal\nARG=--account\nARG=rarebit\nARG=--ignore-pin\nARG=--\nARG=-p\nARG=hello world\n" {
+		t.Fatalf("cc account shortcut: err=%v, output=%s", err, output)
+	}
 	mustRun(root, "add", "personal", personal)
 	unauthed := filepath.Join(root, "unauthed-config")
 	if err := os.Mkdir(unauthed, 0700); err != nil {
@@ -135,12 +159,60 @@ CLAUDE_CONFIG_DIR=/wrong-shim-profile exec "$FAKE_REAL_CLAUDE" "$@"
 	if output := mustRun(nested, "run", "--profile", "work", "--", "-p", "hello world"); !strings.Contains(output, "DIR="+work+"\nARG=-p\nARG=hello world\n") {
 		t.Fatalf("explicit override: %s", output)
 	}
+	if err := os.WriteFile(filepath.Join(personal, ".claude.json"), []byte(`{"oauthAccount":{"emailAddress":"personal@example.test"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(personal, "settings.json"), []byte(`{"theme":"dark"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(personal, "projects"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(personal, ".credentials.json"), []byte("should not be shared"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output := mustRun(nested, "run", "--profile", "personal", "--account", "work", "--", "-c")
+	if !strings.Contains(output, "using personal config with work credentials; account cache is isolated") || !strings.Contains(output, "CREDENTIALS="+work+"\nARG=-c\n") {
+		t.Fatalf("separate config and account: %s", output)
+	}
+	var overlay string
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "DIR=") {
+			overlay = strings.TrimPrefix(line, "DIR=")
+		}
+	}
+	if overlay == "" || overlay == personal || overlay == work {
+		t.Fatalf("split launch should use its own config overlay, got %q in %s", overlay, output)
+	}
+	if cache, err := os.ReadFile(filepath.Join(personal, ".claude.json")); err != nil || string(cache) != `{"oauthAccount":{"emailAddress":"personal@example.test"}}` {
+		t.Fatalf("split launch mutated the selected profile's account cache: %q, %v", cache, err)
+	}
+	for _, name := range []string{"settings.json", "projects"} {
+		link, err := os.Readlink(filepath.Join(overlay, name))
+		if err != nil || link != filepath.Join(personal, name) {
+			t.Fatalf("split overlay should share %s: link=%q err=%v", name, link, err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(overlay, ".credentials.json")); !os.IsNotExist(err) {
+		t.Fatalf("split overlay must not expose a config-directory credential file: %v", err)
+	}
+	if output, err := call(nested, "run", "--profile", "personal", "--account", "missing", "--", "-c"); err == nil || !strings.Contains(output, `unknown profile "missing"`) || strings.Contains(output, "DIR=") {
+		t.Fatalf("unregistered account should stop launch: err=%v, output=%s", err, output)
+	}
+	oldVersionEnv := append([]string(nil), env...)
+	oldVersionEnv = append(oldVersionEnv, "FAKE_CLAUDE_VERSION=2.1.214")
+	oldVersion := exec.Command(bin, "run", "--profile", "personal", "--account", "work", "--", "-c")
+	oldVersion.Dir = nested
+	oldVersion.Env = oldVersionEnv
+	if output, err := oldVersion.CombinedOutput(); err == nil || !strings.Contains(string(output), "requires Claude Code 2.1.215 or newer") || strings.Contains(string(output), "DIR=") {
+		t.Fatalf("older Claude must reject separate credentials: err=%v, output=%s", err, output)
+	}
 
 	writeStatus(t, personal, "changed@example.test", "changed-org")
 	if output, err := call(nested, "run", "--", "-c"); err == nil || !strings.Contains(output, "identity changed") || strings.Contains(output, "DIR=") {
 		t.Fatalf("changed login should stop launch: err=%v, output=%s", err, output)
 	}
-	if output := mustRun(nested, "run", "--ignore-pin", "--", "-c"); !strings.Contains(output, "pin bypassed for personal: Claude reports changed@example.test / changed-org") || !strings.Contains(output, "DIR="+personal+"\nARG=-c\n") {
+	if output := mustRun(nested, "run", "--ignore-pin", "--", "-c"); !strings.Contains(output, "pin bypassed for account personal: Claude reports changed@example.test / changed-org") || !strings.Contains(output, "DIR="+personal+"\nARG=-c\n") {
 		t.Fatalf("one-run pin bypass: %s", output)
 	}
 	if output, err := call(nested, "run", "--", "-c"); err == nil || !strings.Contains(output, "identity changed") || strings.Contains(output, "DIR=") {
@@ -198,12 +270,12 @@ func testCLIEnv(configFile, claudeBinary string) []string {
 	env := make([]string, 0, len(os.Environ())+2)
 	for _, item := range os.Environ() {
 		key := strings.SplitN(item, "=", 2)[0]
-		if key == "CCENV_CONFIG" || key == "CCENV_CLAUDE_BIN" || key == "CLAUDE_CONFIG_DIR" ||
+		if key == "CCENV_CONFIG" || key == "CCENV_CLAUDE_BIN" || key == "CLAUDE_CONFIG_DIR" || key == "CLAUDE_SECURESTORAGE_CONFIG_DIR" || key == "FAKE_CLAUDE_VERSION" || key == "XDG_CACHE_HOME" ||
 			strings.HasPrefix(key, "ANTHROPIC_") || strings.HasPrefix(key, "CLAUDE_CODE_OAUTH_") ||
 			strings.HasPrefix(key, "CLAUDE_CODE_USE_") {
 			continue
 		}
 		env = append(env, item)
 	}
-	return append(env, "CCENV_CONFIG="+configFile, "CCENV_CLAUDE_BIN="+claudeBinary, "CLAUDE_CONFIG_DIR=/wrong-inherited-profile")
+	return append(env, "CCENV_CONFIG="+configFile, "CCENV_CLAUDE_BIN="+claudeBinary, "CLAUDE_CONFIG_DIR=/wrong-inherited-profile", "XDG_CACHE_HOME="+filepath.Join(filepath.Dir(filepath.Dir(configFile)), "cache"))
 }

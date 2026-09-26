@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -12,6 +14,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -41,6 +44,7 @@ type selection struct {
 }
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+var claudeVersionRE = regexp.MustCompile(`(?m)^([0-9]+)\.([0-9]+)\.([0-9]+)`)
 
 // GoReleaser sets version for release binaries. Go-installed binaries get their
 // module version from Go build information instead.
@@ -79,7 +83,33 @@ func dispatch(args []string) error {
 		if len(args) != 2 || args[1] != "bash" {
 			return errors.New("usage: ccenv init bash")
 		}
-		fmt.Println(`cc() { command ccenv run -- "$@"; }`)
+		fmt.Println(`cc() {
+  local -a ccenv_args=()
+  while (($#)); do
+    case "${1-}" in
+      --profile|--account)
+        if (($# < 2)); then
+          printf 'usage: cc [--profile <name>] [--account <name>] [--ignore-pin] [--] [CLAUDE_ARGS...]\n' >&2
+          return 2
+        fi
+        ccenv_args+=("$1" "$2")
+        shift 2
+        ;;
+      --ignore-pin)
+        ccenv_args+=("$1")
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+  command ccenv run "${ccenv_args[@]}" -- "$@"
+}`)
 		return nil
 	case "add":
 		if len(args) != 3 || !validName.MatchString(args[1]) {
@@ -136,7 +166,7 @@ func usage() {
   ccenv current                           Show the selected profile and source
   ccenv list                              List registered profiles
   ccenv check                             Verify logins and flag duplicate accounts
-  ccenv run [--profile <name>] [--ignore-pin] -- [args]
+  ccenv run [--profile <name>] [--account <name>] [--ignore-pin] -- [args]
                                            Launch Claude Code
   ccenv init bash                         Print the interactive cc shell function
   ccenv version                           Print the installed version
@@ -263,17 +293,107 @@ func claudeBinary() (string, error) {
 	return real, nil
 }
 
-func withConfigDir(env []string, dir string) []string {
-	result := make([]string, 0, len(env)+1)
+func withClaudeDirs(env []string, configDir, credentialsDir string) []string {
+	result := make([]string, 0, len(env)+2)
 	for _, e := range env {
-		if !strings.HasPrefix(e, "CLAUDE_CONFIG_DIR=") {
+		if !strings.HasPrefix(e, "CLAUDE_CONFIG_DIR=") && !strings.HasPrefix(e, "CLAUDE_SECURESTORAGE_CONFIG_DIR=") {
 			result = append(result, e)
 		}
 	}
-	return append(result, "CLAUDE_CONFIG_DIR="+dir)
+	return append(result, "CLAUDE_CONFIG_DIR="+configDir, "CLAUDE_SECURESTORAGE_CONFIG_DIR="+credentialsDir)
 }
 
-func getAuth(dir string) (authStatus, error) {
+// splitConfigDir creates a per-config/per-account view of the config directory.
+// Claude writes the active account identity cache to .claude.json even when its
+// credentials come from a separate store. Keep that mutable cache private to
+// the split while sharing the user's settings, plugins, memory, and history.
+func splitConfigDir(configDir, credentialsDir string) (string, error) {
+	configDir, err := filepath.Abs(configDir)
+	if err != nil {
+		return "", err
+	}
+	credentialsDir, err = filepath.Abs(credentialsDir)
+	if err != nil {
+		return "", err
+	}
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("find ccenv cache directory: %w", err)
+	}
+	hash := sha256.Sum256([]byte(configDir + "\x00" + credentialsDir))
+	overlay := filepath.Join(cacheDir, "ccenv", "config-overlays", hex.EncodeToString(hash[:16]))
+	if err := os.MkdirAll(overlay, 0700); err != nil {
+		return "", fmt.Errorf("create split config overlay: %w", err)
+	}
+	if err := os.Chmod(overlay, 0700); err != nil {
+		return "", fmt.Errorf("secure split config overlay: %w", err)
+	}
+	entries, err := os.ReadDir(configDir)
+	if err != nil {
+		return "", fmt.Errorf("read config directory %s: %w", configDir, err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".claude.json") || strings.HasPrefix(name, ".credentials.json") {
+			continue
+		}
+		source := filepath.Join(configDir, name)
+		dest := filepath.Join(overlay, name)
+		if info, err := os.Lstat(dest); err == nil {
+			if info.Mode()&os.ModeSymlink == 0 {
+				return "", fmt.Errorf("split config overlay contains unexpected file %s", dest)
+			}
+			if err := os.Remove(dest); err != nil {
+				return "", fmt.Errorf("replace split config link %s: %w", dest, err)
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("inspect split config path %s: %w", dest, err)
+		}
+		if err := os.Symlink(source, dest); err != nil {
+			return "", fmt.Errorf("share config entry %s: %w", name, err)
+		}
+	}
+	credentialPath := filepath.Join(overlay, ".credentials.json")
+	if _, err := os.Lstat(credentialPath); err == nil {
+		return "", fmt.Errorf("split config overlay contains an unexpected credential file: %s", credentialPath)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("inspect split credential path: %w", err)
+	}
+	cacheSource := filepath.Join(configDir, ".claude.json")
+	cacheDest := filepath.Join(overlay, ".claude.json")
+	if data, err := os.ReadFile(cacheSource); err == nil {
+		tmpFile, err := os.CreateTemp(overlay, ".claude.json.tmp-")
+		if err != nil {
+			return "", fmt.Errorf("create split account cache: %w", err)
+		}
+		tmp := tmpFile.Name()
+		if _, err := tmpFile.Write(data); err != nil {
+			_ = tmpFile.Close()
+			_ = os.Remove(tmp)
+			return "", fmt.Errorf("write split account cache: %w", err)
+		}
+		if err := tmpFile.Close(); err != nil {
+			_ = os.Remove(tmp)
+			return "", fmt.Errorf("close split account cache: %w", err)
+		}
+		if err := os.Rename(tmp, cacheDest); err != nil {
+			_ = os.Remove(tmp)
+			return "", fmt.Errorf("install split account cache: %w", err)
+		}
+	} else if errors.Is(err, os.ErrNotExist) {
+		if err := os.Remove(cacheDest); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("remove stale split account cache: %w", err)
+		}
+	} else {
+		return "", fmt.Errorf("read account cache from %s: %w", configDir, err)
+	}
+	if err := os.Chmod(overlay, 0700); err != nil {
+		return "", fmt.Errorf("secure split config overlay: %w", err)
+	}
+	return overlay, nil
+}
+
+func getAuth(configDir, credentialsDir string) (authStatus, error) {
 	var s authStatus
 	bin, err := claudeBinary()
 	if err != nil {
@@ -282,21 +402,48 @@ func getAuth(dir string) (authStatus, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "auth", "status", "--json")
-	cmd.Env = withConfigDir(os.Environ(), dir)
+	cmd.Env = withClaudeDirs(os.Environ(), configDir, credentialsDir)
 	b, err := cmd.Output()
 	if ctx.Err() != nil {
-		return s, fmt.Errorf("claude auth status timed out for %s", dir)
+		return s, fmt.Errorf("claude auth status timed out for %s", configDir)
 	}
 	if err != nil {
-		return s, fmt.Errorf("claude auth status for %s: %w", dir, err)
+		return s, fmt.Errorf("claude auth status for %s: %w", configDir, err)
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		return s, fmt.Errorf("parse Claude auth status: %w", err)
 	}
 	if !s.LoggedIn || s.Email == "" || s.OrgID == "" || s.AuthMethod != "claude.ai" {
-		return s, fmt.Errorf("%s is not logged in with a claude.ai account", dir)
+		return s, fmt.Errorf("%s is not logged in with a claude.ai account", configDir)
 	}
 	return s, nil
+}
+
+// CLAUDE_SECURESTORAGE_CONFIG_DIR is an undocumented Claude Code feature.
+// Version 2.1.215 is the earliest version with a public live report of the
+// config/credential split working; older or unparseable versions fail closed.
+func requireSeparateCredentialsSupport() error {
+	bin, err := claudeBinary()
+	if err != nil {
+		return fmt.Errorf("find Claude Code: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, bin, "--version").Output()
+	if err != nil {
+		return fmt.Errorf("check Claude Code version for separate credential storage: %w", err)
+	}
+	parts := claudeVersionRE.FindStringSubmatch(string(out))
+	if len(parts) != 4 {
+		return fmt.Errorf("cannot verify Claude Code support for separate credential storage from version output %q", strings.TrimSpace(string(out)))
+	}
+	major, _ := strconv.Atoi(parts[1])
+	minor, _ := strconv.Atoi(parts[2])
+	patch, _ := strconv.Atoi(parts[3])
+	if major < 2 || (major == 2 && (minor < 1 || (minor == 1 && patch < 215))) {
+		return fmt.Errorf("separate config and account selection requires Claude Code 2.1.215 or newer; found %s", strings.Join(parts[1:], "."))
+	}
+	return nil
 }
 
 func add(name, dir string) error {
@@ -318,7 +465,7 @@ func add(name, dir string) error {
 	if !info.IsDir() {
 		return fmt.Errorf("%s is not a directory", dir)
 	}
-	s, err := getAuth(dir)
+	s, err := getAuth(dir, dir)
 	if err != nil {
 		return err
 	}
@@ -339,7 +486,7 @@ func refresh(name string) error {
 	if err != nil {
 		return err
 	}
-	s, err := getAuth(p.Dir)
+	s, err := getAuth(p.Dir, p.Dir)
 	if err != nil {
 		return err
 	}
@@ -500,7 +647,7 @@ func list() error {
 }
 
 func verify(name string, p profile) error {
-	s, err := getAuth(p.Dir)
+	s, err := getAuth(p.Dir, p.Dir)
 	if err != nil {
 		return err
 	}
@@ -553,6 +700,7 @@ func check() error {
 func run(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	name := fs.String("profile", "", "profile override")
+	account := fs.String("account", "", "registered account profile whose credentials to use")
 	ignorePin := fs.Bool("ignore-pin", false, "bypass the saved account identity for this launch")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -565,23 +713,44 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	accountName := *account
+	if accountName == "" {
+		accountName = s.Name
+	}
+	accountProfile, err := requireProfile(c, accountName)
+	if err != nil {
+		return err
+	}
+	if accountProfile.Dir != p.Dir {
+		if err := requireSeparateCredentialsSupport(); err != nil {
+			return err
+		}
+	}
 	for _, key := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY", "CLAUDE_CODE_USE_MANTLE"} {
 		if os.Getenv(key) != "" {
 			return fmt.Errorf("%s is set and may override the subscription; unset it before running cc", key)
 		}
 	}
-	auth, err := getAuth(p.Dir)
+	auth, err := getAuth(accountProfile.Dir, accountProfile.Dir)
 	if err != nil {
 		return err
 	}
 	if *ignorePin {
-		fmt.Fprintf(os.Stderr, "ccenv: pin bypassed for %s: Claude reports %s / %s for this launch\n", s.Name, auth.Email, auth.OrgID)
-	} else if auth.Email != p.Email || auth.OrgID != p.OrgID {
-		return fmt.Errorf("%s identity changed: expected %s / %s, found %s / %s", s.Name, p.Email, p.OrgID, auth.Email, auth.OrgID)
+		fmt.Fprintf(os.Stderr, "ccenv: pin bypassed for account %s: Claude reports %s / %s for this launch\n", accountName, auth.Email, auth.OrgID)
+	} else if auth.Email != accountProfile.Email || auth.OrgID != accountProfile.OrgID {
+		return fmt.Errorf("%s identity changed: expected %s / %s, found %s / %s", accountName, accountProfile.Email, accountProfile.OrgID, auth.Email, auth.OrgID)
+	}
+	launchConfigDir := p.Dir
+	if accountProfile.Dir != p.Dir {
+		launchConfigDir, err = splitConfigDir(p.Dir, accountProfile.Dir)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "ccenv: using %s config with %s credentials; account cache is isolated for this split\n", s.Name, accountName)
 	}
 	bin, err := claudeBinary()
 	if err != nil {
 		return err
 	}
-	return syscall.Exec(bin, append([]string{bin}, fs.Args()...), withConfigDir(os.Environ(), p.Dir))
+	return syscall.Exec(bin, append([]string{bin}, fs.Args()...), withClaudeDirs(os.Environ(), launchConfigDir, accountProfile.Dir))
 }
