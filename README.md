@@ -98,11 +98,15 @@ ccenv current      # show the profile, config directory, and selection source
 ccenv list         # list profiles; * marks the global default
 ccenv run --profile work -- -p 'hello'  # one-off override
 cc --account rarebit                   # use Rarebit credentials with this folder's config
+cc --profile sidekick --ignore-pin      # bypass the pin for this launch only
 ```
 
 `--profile` selects the user config directory. `--account` selects the
 registered profile whose login credentials to use, while retaining the
-selected project or user config directory. From a Sidekick project, for
+selected project or user config directory. The `cc` Bash function accepts
+`--profile`, `--account`, and `--ignore-pin` before Claude arguments; use `--`
+to end ccenv options when needed. These selections apply only to that launch.
+From a Sidekick project, for
 example, `ccenv run --profile sidekick --account rarebit --` (or `cc --account
 rarebit` after loading the Bash function) uses Sidekick settings, memories,
 plugins, and history with credentials from the Rarebit profile. `--account`

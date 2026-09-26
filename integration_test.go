@@ -122,10 +122,10 @@ CLAUDE_CONFIG_DIR=/wrong-shim-profile exec "$FAKE_REAL_CLAUDE" "$@"
 	}
 	ccEnvPath := append([]string(nil), os.Environ()...)
 	ccEnvPath = append(ccEnvPath, "PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	ccShell := exec.Command("bash", "-c", `source "$1"; cc --account rarebit -p 'hello world'`, "bash", initFile)
+	ccShell := exec.Command("bash", "-c", `source "$1"; cc --profile personal --account rarebit --ignore-pin -- -p 'hello world'`, "bash", initFile)
 	ccShell.Dir = root
 	ccShell.Env = ccEnvPath
-	if output, err := ccShell.CombinedOutput(); err != nil || string(output) != "ARG=run\nARG=--account\nARG=rarebit\nARG=--\nARG=-p\nARG=hello world\n" {
+	if output, err := ccShell.CombinedOutput(); err != nil || string(output) != "ARG=run\nARG=--profile\nARG=personal\nARG=--account\nARG=rarebit\nARG=--ignore-pin\nARG=--\nARG=-p\nARG=hello world\n" {
 		t.Fatalf("cc account shortcut: err=%v, output=%s", err, output)
 	}
 	mustRun(root, "add", "personal", personal)

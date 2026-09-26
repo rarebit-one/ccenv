@@ -84,17 +84,31 @@ func dispatch(args []string) error {
 			return errors.New("usage: ccenv init bash")
 		}
 		fmt.Println(`cc() {
-  if [[ "${1-}" == --account ]]; then
-    if (($# < 2)); then
-      printf 'usage: cc --account <name> [CLAUDE_ARGS...]\n' >&2
-      return 2
-    fi
-    local account="$2"
-    shift 2
-    command ccenv run --account "$account" -- "$@"
-  else
-    command ccenv run -- "$@"
-  fi
+  local -a ccenv_args=()
+  while (($#)); do
+    case "${1-}" in
+      --profile|--account)
+        if (($# < 2)); then
+          printf 'usage: cc [--profile <name>] [--account <name>] [--ignore-pin] [--] [CLAUDE_ARGS...]\n' >&2
+          return 2
+        fi
+        ccenv_args+=("$1" "$2")
+        shift 2
+        ;;
+      --ignore-pin)
+        ccenv_args+=("$1")
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+  command ccenv run "${ccenv_args[@]}" -- "$@"
 }`)
 		return nil
 	case "add":
