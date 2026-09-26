@@ -111,6 +111,13 @@ checks Rarebit's saved identity pin before launch. This requires Claude Code
 `CLAUDE_SECURESTORAGE_CONFIG_DIR` feature. See the [upstream documentation
 request](https://github.com/anthropics/claude-code/issues/79223).
 
+For a split launch, `ccenv` creates a private config overlay under
+`$XDG_CACHE_HOME/ccenv/config-overlays` (or the OS cache directory). It copies
+the config's mutable `.claude.json` account cache there and symlinks the other
+config entries, so settings, plugins, memories, and history stay shared while
+Claude's account-cache writes stay out of the configured profile. The overlay
+is keyed by the config/account directory pair and has mode `0700`.
+
 When the config and credential profiles differ, Claude Code's `/status` may
 show the account cached in the config directory, rather than the account tied
 to the credential store. `ccenv` prints the config/account pairing before

@@ -41,7 +41,7 @@ This file contains account identifiers and paths, but no login tokens. New confi
 2. Stop if a known API-key, OAuth-token, gateway, or cloud-provider variable is set in the caller's environment.
 3. Run `claude auth status --json` for that profile, with a ten-second timeout.
 4. Require a logged-in `claude.ai` account. Unless `--ignore-pin` was passed, require its email and organization to match the selected account profile's pin.
-5. Set `CLAUDE_CONFIG_DIR` to the selected config profile and `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the selected account profile, then execute Claude Code with the supplied arguments.
+5. If config and account profiles differ, prepare a private overlay in the ccenv cache. Copy `.claude.json` into it, omit credential files, and symlink other config entries to the selected config profile. This keeps settings, plugins, memories, and history shared while writes to Claude's mutable account cache remain isolated. Set `CLAUDE_CONFIG_DIR` to that overlay and `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the selected account profile, then execute Claude Code with the supplied arguments. If the profiles match, use the config profile directly.
 
 By default, the config and account profiles are the same. `--profile NAME`
 chooses a config profile; `--account NAME` chooses which registered profile's
