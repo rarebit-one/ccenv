@@ -1,38 +1,36 @@
 # ccenv
 
+[![Tests](https://github.com/rarebit-one/ccenv/actions/workflows/test.yml/badge.svg)](https://github.com/rarebit-one/ccenv/actions/workflows/test.yml)
+[![Latest release](https://img.shields.io/github/v/release/rarebit-one/ccenv)](https://github.com/rarebit-one/ccenv/releases/latest)
+
 `ccenv` launches Claude Code with the right existing login for the current directory. Each profile points at its own `CLAUDE_CONFIG_DIR`; credentials, settings, plugins, and session history stay in their original directories. It never copies or swaps credentials.
 
 The selected profile comes from the nearest `.ccenv` in the current directory or any parent. If there is no dotfile, `ccenv` uses the global default. An invalid or unknown dotfile stops the launch instead of silently choosing another account. Before launching, `ccenv` asks Claude Code for its authentication status and checks the email and organization recorded when the profile was added. See [selection and verification behavior](docs/behavior.md) for the exact rules.
 
 ## Install and update
 
-You need an installed `claude` command and a Linux or macOS machine. This is a
-private repository, so both install methods require read access to
-`rarebit-one/ccenv` and GitHub authentication. Linux is covered by CI; macOS
-binaries are built for both Apple Silicon and Intel.
+You need an installed `claude` command and a Linux or macOS machine. Linux is
+covered by CI; macOS binaries are built for both Apple Silicon and Intel.
 
-**With Go 1.23 or newer**, authenticate Git for the private module, then install
-the latest tagged release into `~/.local/bin`:
+**With Go 1.23 or newer**, install the latest tagged release into
+`~/.local/bin`:
 
 ```sh
-gh auth login            # skip if already authenticated
-gh auth setup-git        # lets Go's Git fetch use your gh login over HTTPS
 mkdir -p "$HOME/.local/bin"
-GOBIN="$HOME/.local/bin" GOPRIVATE=github.com/rarebit-one/ccenv \
+GOBIN="$HOME/.local/bin" \
   go install github.com/rarebit-one/ccenv@latest
 ccenv version
 ```
 
 Run the same `go install` command again to update. To pin a version, replace
-`@latest` with a tag such as `@v0.1.0`. `GOPRIVATE` keeps this private module
-away from the public Go module proxy and checksum database.
+`@latest` with a tag such as `@v0.1.0`.
 
-**Without Go**, download the installer from the latest release, review it, and
-run it. The script selects the Linux or macOS binary for your CPU, verifies its
-SHA-256 checksum, and installs it into `~/.local/bin`:
+**Without Go**, install the GitHub CLI, authenticate if it asks, then download
+the installer from the latest release, review it, and run it. The script
+selects the Linux or macOS binary for your CPU, verifies its SHA-256 checksum,
+and installs it into `~/.local/bin`:
 
 ```sh
-gh auth login            # skip if already authenticated
 tag="$(gh release view -R rarebit-one/ccenv --json tagName --jq .tagName)"
 gh release download "$tag" -R rarebit-one/ccenv -p install.sh \
   -O ./ccenv-install.sh --clobber
@@ -54,6 +52,24 @@ remain the trust boundary. Transient download failures are retried three times;
 the installed binary is left alone if all attempts fail. Releases after v0.1.2
 are immutable on GitHub, and the installer also verifies their GitHub release
 attestation. Older releases get checksum verification only.
+
+## Quick start
+
+Register the directories for existing Claude Code logins, choose the default,
+and launch from any directory:
+
+```sh
+ccenv add personal ~/.claude-personal
+ccenv add work ~/.claude-work
+ccenv default personal
+ccenv run --
+```
+
+To select a profile for one project, run `ccenv local work` from that project,
+then launch with `ccenv run --`. The `.ccenv` file contains only the profile
+name; commit it only when collaborators use the same local profile name.
+`ccenv run --` works without shell setup. For the interactive `cc` command,
+see the Bash setup below.
 
 Ensure `~/.local/bin` is on your `PATH`. Add this to `~/.bashrc` to make `cc`
 your interactive launch command:
@@ -186,3 +202,8 @@ SHA-256 checksums and `install.sh` to [GitHub Releases](https://github.com/rareb
 Release configuration lives in `.goreleaser.yaml`. GitHub release immutability
 protects future releases from asset replacement and tag movement after
 publication; it does not apply retroactively to v0.1.0–v0.1.2.
+
+## License
+
+Licensed under the GNU General Public License, version 3 or (at your option)
+any later version. See [LICENSE](LICENSE).

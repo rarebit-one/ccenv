@@ -12,7 +12,7 @@ usage() {
 Usage: bash install.sh [--version vX.Y.Z] [--bin-dir DIR]
 
 Install the latest ccenv release into ~/.local/bin, or update an existing copy.
-Requires GitHub CLI access to the private rarebit-one/ccenv repository.
+Requires the GitHub CLI to download and verify release assets.
 EOF
 }
 
