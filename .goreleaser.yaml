@@ -17,6 +17,7 @@ archives:
     files:
       - README.md
       - docs/behavior.md
+      - LICENSE
 
 checksum:
   name_template: checksums.txt
