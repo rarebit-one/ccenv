@@ -6,8 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func lockAs(t *testing.T, dir string, pid int) {
@@ -98,7 +100,15 @@ func TestDesktopCLI(t *testing.T) {
 		t.Fatalf("build ccenv: %v\n%s", err, out)
 	}
 	fakeDesktop := filepath.Join(root, "fake-desktop")
-	script := "#!/bin/sh\nprintf 'CONFIG=%s\\n' \"$CLAUDE_CONFIG_DIR\"\nenv | grep -E '^(CLAUDECODE|CLAUDE_CODE_SESSION_ID|CLAUDE_CODE_MESSAGING_TOKEN)=' | sed 's/^/LEAK=/'\nfor a in \"$@\"; do printf 'ARG=%s\\n' \"$a\"; done\n"
+	// The fake records what it received in $FAKE_OUT, written whole by rename:
+	// on macOS ccenv starts Desktop detached, so the test polls for the file.
+	script := `#!/bin/sh
+{
+  printf 'CONFIG=%s\n' "$CLAUDE_CONFIG_DIR"
+  env | grep -E '^(CLAUDECODE|CLAUDE_CODE_SESSION_ID|CLAUDE_CODE_MESSAGING_TOKEN)=' | sed 's/^/LEAK=/'
+  for a in "$@"; do printf 'ARG=%s\n' "$a"; done
+} > "$FAKE_OUT.tmp" && mv "$FAKE_OUT.tmp" "$FAKE_OUT"
+`
 	if err := os.WriteFile(fakeDesktop, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -120,6 +130,7 @@ func TestDesktopCLI(t *testing.T) {
 		"XDG_DATA_HOME=" + data,
 		"XDG_STATE_HOME=" + filepath.Join(root, "state"),
 		"XDG_CONFIG_HOME=" + filepath.Join(root, "xdg-config"),
+		"FAKE_OUT=" + filepath.Join(root, "desktop.out"),
 	}
 	call := func(extra []string, args ...string) (string, error) {
 		cmd := exec.Command(bin, args...)
@@ -128,15 +139,33 @@ func TestDesktopCLI(t *testing.T) {
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
-
-	out, err := call([]string{"CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=x", "CLAUDE_CODE_MESSAGING_TOKEN=t"}, "desktop", "--", "claude://code/new")
-	want := "CONFIG=" + filepath.Join(root, "work") + "\nARG=--user-data-dir=" + filepath.Join(data, "ccenv", "desktop", "work") + "\nARG=claude://code/new\n"
-	if err != nil || out != want {
-		t.Fatalf("default launch: %v\n%s\nwant:\n%s", err, out, want)
+	// launch returns ccenv's own output and what the fake Desktop received.
+	launch := func(extra []string, args ...string) (string, string, error) {
+		t.Helper()
+		outFile := filepath.Join(root, "desktop.out")
+		_ = os.Remove(outFile)
+		out, err := call(extra, args...)
+		if err != nil {
+			return out, "", err
+		}
+		for i := 0; i < 100; i++ {
+			if b, readErr := os.ReadFile(outFile); readErr == nil {
+				return out, string(b), nil
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Fatalf("Desktop was not started by ccenv %v:\n%s", args, out)
+		return "", "", nil
 	}
-	out, err = call(nil, "desktop", "--profile", "personal")
-	if err != nil || !strings.Contains(out, "ARG=--user-data-dir="+filepath.Join(root, "custom")+"\n") {
-		t.Fatalf("explicit desktop_dir: %v\n%s", err, out)
+
+	_, got, err := launch([]string{"CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=x", "CLAUDE_CODE_MESSAGING_TOKEN=t"}, "desktop", "--", "claude://code/new")
+	want := "CONFIG=" + filepath.Join(root, "work") + "\nARG=--user-data-dir=" + filepath.Join(data, "ccenv", "desktop", "work") + "\nARG=claude://code/new\n"
+	if err != nil || got != want {
+		t.Fatalf("default launch: %v\n%s\nwant:\n%s", err, got, want)
+	}
+	out, got, err := launch(nil, "desktop", "--profile", "personal")
+	if err != nil || !strings.Contains(got, "ARG=--user-data-dir="+filepath.Join(root, "custom")+"\n") {
+		t.Fatalf("explicit desktop_dir: %v\n%s%s", err, out, got)
 	}
 	if out, err = call(nil, "desktop", "--", "--user-data-dir=/elsewhere"); err == nil {
 		t.Fatalf("a caller-supplied --user-data-dir must be refused:\n%s", out)
@@ -145,9 +174,9 @@ func TestDesktopCLI(t *testing.T) {
 		t.Fatalf("override env must be refused: %v\n%s", err, out)
 	}
 	// personal was launched last, so an incoming sign-in link goes there.
-	out, err = call(nil, "desktop", "handle", "claude://claude.ai/magic-link#x")
-	if err != nil || !strings.Contains(out, "routing claude:// link to personal") || !strings.Contains(out, "ARG=claude://claude.ai/magic-link#x\n") {
-		t.Fatalf("handle routing: %v\n%s", err, out)
+	out, got, err = launch(nil, "desktop", "handle", "claude://claude.ai/magic-link#x")
+	if err != nil || !strings.Contains(out, "routing claude:// link to personal") || !strings.Contains(got, "ARG=claude://claude.ai/magic-link#x\n") {
+		t.Fatalf("handle routing: %v\n%s%s", err, out, got)
 	}
 
 	out, err = call(nil, "list", "--json")
@@ -163,6 +192,14 @@ func TestDesktopCLI(t *testing.T) {
 		t.Fatalf("list --json: %v\n%s", err, out)
 	}
 
+	if runtime.GOOS != "linux" {
+		for _, args := range [][]string{{"desktop", "install"}, {"omarchy", "install", "--dir", filepath.Join(root, "plugins")}} {
+			if out, err = call(nil, args...); err == nil || !strings.Contains(out, "Linux only") {
+				t.Fatalf("%v must refuse off Linux: %v\n%s", args, err, out)
+			}
+		}
+		return
+	}
 	apps := filepath.Join(data, "applications")
 	if out, err = call(nil, "desktop", "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
@@ -259,5 +296,30 @@ func TestDiscoverSkipsRegisteredAndNonConfigDirs(t *testing.T) {
 	n, _ := r.Read(b)
 	if got, want := string(b[:n]), "ccenv add work "+filepath.Join(home, ".claude-work")+"\n"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestDesktopBinaryFindsClaudeAppOnMac(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS app bundle lookup")
+	}
+	if _, err := os.Stat("/Applications/Claude.app"); err == nil {
+		t.Skip("a system Claude.app would take precedence")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CCENV_DESKTOP_BIN", "")
+	if _, err := desktopBinary(); err == nil || !strings.Contains(err.Error(), "CCENV_DESKTOP_BIN") {
+		t.Fatalf("missing app must point at CCENV_DESKTOP_BIN, got %v", err)
+	}
+	app := filepath.Join(home, "Applications/Claude.app/Contents/MacOS/Claude")
+	if err := os.MkdirAll(filepath.Dir(app), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(app, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := desktopBinary(); err != nil || got != app {
+		t.Fatalf("got %q, %v; want %q", got, err, app)
 	}
 }
