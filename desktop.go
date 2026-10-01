@@ -179,7 +179,27 @@ func launchDesktop(c config, name string, args []string) error {
 	argv := append([]string{bin, "--user-data-dir=" + dir}, args...)
 	// The Code tab reads CLAUDE_CONFIG_DIR for settings, plugins, and history;
 	// Desktop signs Claude Code in with its own login.
-	return syscall.Exec(bin, argv, withClaudeDirs(os.Environ(), p.Dir, p.Dir))
+	return syscall.Exec(bin, argv, withClaudeDirs(withoutSessionEnv(os.Environ()), p.Dir, p.Dir))
+}
+
+// withoutSessionEnv drops the variables a running Claude Code session exports
+// to its tools. Launched from such a terminal, Desktop would otherwise pass
+// them on to the sessions it starts.
+func withoutSessionEnv(env []string) []string {
+	session := map[string]bool{
+		"CLAUDECODE": true, "CLAUDE_PID": true, "CLAUDE_EFFORT": true,
+		"CLAUDE_CODE_SESSION_ID": true, "CLAUDE_CODE_ENTRYPOINT": true,
+		"CLAUDE_CODE_CHILD_SESSION": true, "CLAUDE_CODE_SESSION_ATTENDED": true,
+		"CLAUDE_CODE_EXECPATH": true,
+	}
+	result := make([]string, 0, len(env))
+	for _, e := range env {
+		key, _, _ := strings.Cut(e, "=")
+		if !session[key] && !strings.HasPrefix(key, "CLAUDE_CODE_MESSAGING_") {
+			result = append(result, e)
+		}
+	}
+	return result
 }
 
 // desktopHandle is the Exec target of ccenv's com.anthropic.Claude.desktop.

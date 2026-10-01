@@ -77,8 +77,13 @@ environment check. It launches `claude-desktop` (or `CCENV_DESKTOP_BIN`) with
 `--user-data-dir` set to the profile's `desktop_dir`, or to
 `$XDG_DATA_HOME/ccenv/desktop/NAME` when none is set. It also sets
 `CLAUDE_CONFIG_DIR` and `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the profile
-directory. Arguments after `--` reach Desktop unchanged, except that a
-caller-supplied `--user-data-dir` is refused. The packaged app deletes
+directory. It drops the variables a running Claude Code session exports
+(`CLAUDECODE`, `CLAUDE_PID`, `CLAUDE_CODE_SESSION_ID`,
+`CLAUDE_CODE_MESSAGING_*`, and similar), so a launch from a Claude Code terminal
+does not leak that session into Desktop. Desktop passes its own login to Code-tab
+sessions as `CLAUDE_CODE_OAUTH_TOKEN`; the profile directory supplies their
+settings, memory, plugins, and history. Arguments after `--` reach Desktop
+unchanged, except that a caller-supplied `--user-data-dir` is refused. The packaged app deletes
 `CLAUDE_USER_DATA_DIR` from its environment at startup, so the command-line
 switch is the supported lever.
 

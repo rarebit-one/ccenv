@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // The Omarchy bar plugin ships inside the binary so it always matches the
@@ -46,11 +47,20 @@ func omarchy(args []string) error {
 		return err
 	}
 	dest := filepath.Join(*pluginsDir, omarchyPluginID)
+	_, statErr := os.Stat(dest)
+	existed := statErr == nil
 	if err := writeOmarchyPlugin(dest, self); err != nil {
 		return err
 	}
 	fmt.Println("Installed", dest)
-	fmt.Println("Enable it with: omarchy plugin enable", omarchyPluginID)
+	// A third-party plugin is enabled when its id appears in shell.json.
+	shell, _ := os.ReadFile(filepath.Join(filepath.Dir(*pluginsDir), "shell.json"))
+	if !strings.Contains(string(shell), strconv.Quote(omarchyPluginID)) {
+		fmt.Println("Enable it with: omarchy plugin enable", omarchyPluginID)
+	} else if existed {
+		// The shell caches Ccenv.js (a .pragma library) across hot reloads.
+		fmt.Println("Restart the shell to load the update: omarchy-restart-shell")
+	}
 	return nil
 }
 
