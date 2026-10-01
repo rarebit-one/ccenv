@@ -35,6 +35,15 @@ The generated user config is JSON at `~/.config/ccenv/config.json` on Linux, or 
 
 This file contains account identifiers and paths, but no login tokens. New config files are created with mode `0600`. Credentials remain managed by Claude Code in each profile directory.
 
+A profile may point at Claude Code's default directory, `~/.claude`. Claude
+keeps that directory's account cache at `~/.claude.json`, outside it, and reads
+`<dir>/.claude.json` instead whenever `CLAUDE_CONFIG_DIR` names a directory,
+even `~/.claude`. In that layout the login still works but the account email and
+organization read as empty. `ccenv` therefore leaves `CLAUDE_CONFIG_DIR` and
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` unset for the default directory, for both the
+identity check and the launch. A split launch whose config is the default
+directory seeds its overlay from `~/.claude.json`.
+
 ## What happens on launch
 
 1. Resolve the profile using the order above.

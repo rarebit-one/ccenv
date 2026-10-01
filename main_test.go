@@ -95,3 +95,47 @@ func TestVerifyRejectsChangedAccount(t *testing.T) {
 		t.Fatalf("expected identity mismatch, got %v", err)
 	}
 }
+
+func TestDefaultConfigDirLeavesVariablesUnset(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	def := filepath.Join(home, ".claude")
+	other := filepath.Join(home, ".claude-work")
+	env := []string{"PATH=/bin", "CLAUDE_CONFIG_DIR=/stale", "CLAUDE_SECURESTORAGE_CONFIG_DIR=/stale"}
+	got := strings.Join(withClaudeDirs(env, def, def), "\n")
+	if got != "PATH=/bin" {
+		t.Fatalf("default dir must unset both variables, got:\n%s", got)
+	}
+	got = strings.Join(withClaudeDirs(env, other, def), "\n")
+	if !strings.Contains(got, "CLAUDE_CONFIG_DIR="+other) || !strings.Contains(got, "CLAUDE_SECURESTORAGE_CONFIG_DIR="+def) {
+		t.Fatalf("a split with the default account must still name both, got:\n%s", got)
+	}
+	got = strings.Join(withClaudeDirs(env, other, other), "\n")
+	if !strings.Contains(got, "CLAUDE_CONFIG_DIR="+other) {
+		t.Fatalf("a named dir must be set, got:\n%s", got)
+	}
+}
+
+func TestSplitFromDefaultConfigCopiesHomeAccountCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	def := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(def, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"home":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(def, ".claude.json"), []byte(`{"stub":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	overlay, err := splitConfigDir(def, filepath.Join(home, ".claude-other"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(overlay, ".claude.json"))
+	if err != nil || string(b) != `{"home":true}` {
+		t.Fatalf("overlay cache: %s, %v", b, err)
+	}
+}

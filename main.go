@@ -314,12 +314,33 @@ func claudeBinary() (string, error) {
 	return real, nil
 }
 
+// isDefaultConfigDir reports whether dir is Claude Code's default ~/.claude.
+// Claude keeps that directory's account cache at ~/.claude.json, outside it,
+// but reads <dir>/.claude.json once CLAUDE_CONFIG_DIR names any directory,
+// so the default directory must be selected by leaving the variable unset.
+func isDefaultConfigDir(dir string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	def := filepath.Join(home, ".claude")
+	if filepath.Clean(dir) == def {
+		return true
+	}
+	a, errA := filepath.EvalSymlinks(dir)
+	b, errB := filepath.EvalSymlinks(def)
+	return errA == nil && errB == nil && a == b
+}
+
 func withClaudeDirs(env []string, configDir, credentialsDir string) []string {
 	result := make([]string, 0, len(env)+2)
 	for _, e := range env {
 		if !strings.HasPrefix(e, "CLAUDE_CONFIG_DIR=") && !strings.HasPrefix(e, "CLAUDE_SECURESTORAGE_CONFIG_DIR=") {
 			result = append(result, e)
 		}
+	}
+	if isDefaultConfigDir(configDir) && isDefaultConfigDir(credentialsDir) {
+		return result
 	}
 	return append(result, "CLAUDE_CONFIG_DIR="+configDir, "CLAUDE_SECURESTORAGE_CONFIG_DIR="+credentialsDir)
 }
@@ -381,6 +402,9 @@ func splitConfigDir(configDir, credentialsDir string) (string, error) {
 		return "", fmt.Errorf("inspect split credential path: %w", err)
 	}
 	cacheSource := filepath.Join(configDir, ".claude.json")
+	if isDefaultConfigDir(configDir) {
+		cacheSource = filepath.Join(filepath.Dir(configDir), ".claude.json")
+	}
 	cacheDest := filepath.Join(overlay, ".claude.json")
 	if data, err := os.ReadFile(cacheSource); err == nil {
 		tmpFile, err := os.CreateTemp(overlay, ".claude.json.tmp-")
