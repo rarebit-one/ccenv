@@ -172,8 +172,9 @@ ccenv discover                     # print `ccenv add` lines for unregistered ~/
 Desktop keeps its own login, separate from Claude Code's credentials, and has
 no command that reports which account is signed in. `ccenv` therefore cannot
 check a Desktop login against the profile's pin: sign in once per profile, and
-check the account in Desktop's settings. The profile's pin still guards every
-`ccenv run` launch.
+check the account in Desktop's settings. Desktop's Code tab bills the account
+signed in to Desktop, so keep each profile's Desktop login on the account its
+pin names. The pin still guards every `ccenv run` launch.
 
 `ccenv desktop install` writes a `Claude (NAME)` launcher for every profile to
 `$XDG_DATA_HOME/applications` and removes launchers for profiles you have
@@ -191,7 +192,9 @@ On Omarchy, `ccenv omarchy install` adds the `rarebit.ccenv` bar plugin, then
 `omarchy plugin enable rarebit.ccenv` turns it on. It lists your profiles from
 `ccenv list --json`, shows which ones have Desktop running, and opens a profile,
 a new chat, or a new Claude Code session without a terminal. Reinstall it after
-you move the `ccenv` binary, because it records the binary's absolute path.
+you move or upgrade the `ccenv` binary, because it records the binary's
+absolute path, then run `omarchy-restart-shell`: the shell keeps the old path
+cached across hot reloads.
 
 Desktop on Linux is the official beta package (Debian and Ubuntu; Arch users
 can install the AUR `claude-desktop` repackage). Set `CCENV_DESKTOP_BIN` if its

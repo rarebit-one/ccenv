@@ -98,7 +98,7 @@ func TestDesktopCLI(t *testing.T) {
 		t.Fatalf("build ccenv: %v\n%s", err, out)
 	}
 	fakeDesktop := filepath.Join(root, "fake-desktop")
-	script := "#!/bin/sh\nprintf 'CONFIG=%s\\n' \"$CLAUDE_CONFIG_DIR\"\nfor a in \"$@\"; do printf 'ARG=%s\\n' \"$a\"; done\n"
+	script := "#!/bin/sh\nprintf 'CONFIG=%s\\n' \"$CLAUDE_CONFIG_DIR\"\nenv | grep -E '^(CLAUDECODE|CLAUDE_CODE_SESSION_ID|CLAUDE_CODE_MESSAGING_TOKEN)=' | sed 's/^/LEAK=/'\nfor a in \"$@\"; do printf 'ARG=%s\\n' \"$a\"; done\n"
 	if err := os.WriteFile(fakeDesktop, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestDesktopCLI(t *testing.T) {
 		return string(out), err
 	}
 
-	out, err := call(nil, "desktop", "--", "claude://code/new")
+	out, err := call([]string{"CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=x", "CLAUDE_CODE_MESSAGING_TOKEN=t"}, "desktop", "--", "claude://code/new")
 	want := "CONFIG=" + filepath.Join(root, "work") + "\nARG=--user-data-dir=" + filepath.Join(data, "ccenv", "desktop", "work") + "\nARG=claude://code/new\n"
 	if err != nil || out != want {
 		t.Fatalf("default launch: %v\n%s\nwant:\n%s", err, out, want)
@@ -206,9 +206,15 @@ func TestDesktopCLI(t *testing.T) {
 		t.Fatalf("install must not overwrite a handler it did not write:\n%s", out)
 	}
 
-	plugins := filepath.Join(root, "plugins")
-	if out, err = call(nil, "omarchy", "install", "--dir", plugins); err != nil {
+	plugins := filepath.Join(root, "omarchy", "plugins")
+	if out, err = call(nil, "omarchy", "install", "--dir", plugins); err != nil || !strings.Contains(out, "omarchy plugin enable") {
 		t.Fatalf("omarchy install: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(root, "omarchy", "shell.json"), []byte(`{"plugins":["rarebit.ccenv"]}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err = call(nil, "omarchy", "install", "--dir", plugins); err != nil || strings.Contains(out, "omarchy plugin enable") || !strings.Contains(out, "omarchy-restart-shell") {
+		t.Fatalf("omarchy reinstall of an enabled plugin: %v\n%s", err, out)
 	}
 	for _, f := range []string{"manifest.json", "BarWidget.qml", "Panel.qml"} {
 		if _, err := os.Stat(filepath.Join(plugins, omarchyPluginID, f)); err != nil {
