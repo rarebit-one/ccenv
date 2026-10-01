@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -23,6 +24,9 @@ const omarchyPluginID = "rarebit.ccenv"
 func omarchy(args []string) error {
 	if len(args) == 0 || args[0] != "install" {
 		return errors.New("usage: ccenv omarchy install [--dir <plugins-dir>]")
+	}
+	if runtime.GOOS != "linux" {
+		return errors.New("ccenv omarchy install supports Linux only")
 	}
 	fs := flag.NewFlagSet("omarchy install", flag.ContinueOnError)
 	pluginsDir := fs.String("dir", "", "Omarchy plugins directory")

@@ -106,6 +106,14 @@ from another host or a dead process does not count.
 Desktop signs in on its own and offers no command that reports the signed-in
 account, so a Desktop launch does not check the profile's pin.
 
+On Linux, `ccenv desktop` replaces itself with Desktop, so a launcher's process
+becomes the app. On macOS it finds `Claude.app/Contents/MacOS/Claude` in
+`/Applications` or `~/Applications` unless `CCENV_DESKTOP_BIN` is set, and
+starts Desktop in a new session (`setsid`) before exiting. Desktop quits on
+`SIGHUP`, so this keeps it alive when the launching terminal closes. `open -a`
+would also detach, but LaunchServices does not pass the environment that
+carries `CLAUDE_CONFIG_DIR`.
+
 `ccenv desktop handle [ARGS...]` is the launcher's entry point. Without a
 `claude://` argument it launches the selected profile. With one, it picks a
 profile in this order:
@@ -127,5 +135,6 @@ remove a file.
 - The `cc` function is for interactive Bash shells. Scripts can call `ccenv run -- ...` directly. GUI integrations that invoke `claude` themselves do not automatically use `ccenv`.
 - Desktop logins are not pinned. A Desktop profile signed in to the wrong account is caught only by looking at Desktop's settings.
 - `claude://` routing is a guess when more than one profile is running. Start sign-ins one profile at a time.
+- On macOS, `claude://` links reach the app bundle directly, so `ccenv` cannot route them at all. Sign in with only the target profile's Desktop running.
 - `ccenv` selects accounts at process launch. It does not switch a running Claude session or rotate accounts on usage limits.
 - Profile directories isolate user-level data as supported by `CLAUDE_CONFIG_DIR`; project and managed settings may still apply to the same working directory.

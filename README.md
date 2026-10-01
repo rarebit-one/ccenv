@@ -198,9 +198,14 @@ cached across hot reloads.
 
 Desktop on Linux is the official beta package (Debian and Ubuntu; Arch users
 can install the AUR `claude-desktop` repackage). Set `CCENV_DESKTOP_BIN` if its
-launcher is not `claude-desktop` on `PATH`. On macOS, point `CCENV_DESKTOP_BIN`
-at `Claude.app/Contents/MacOS/Claude`; the launcher and plugin commands are
-Linux-only.
+launcher is not `claude-desktop` on `PATH`.
+
+On macOS, `ccenv desktop` finds `Claude.app` in `/Applications` or
+`~/Applications` (or uses `CCENV_DESKTOP_BIN`), and starts it detached in its
+own session, so closing the terminal does not quit it. Two limits apply there.
+macOS delivers `claude://` links to the app bundle rather than to a command,
+so ccenv cannot route a sign-in link to a profile: sign in with only that
+profile's Desktop running. The launcher and Omarchy commands are Linux-only.
 
 ## Commands
 

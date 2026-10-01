@@ -27,8 +27,25 @@ const (
 	launcherPrefix   = "ccenv-claude-"
 )
 
+// macDesktopBinaries are where Claude.app keeps its executable on macOS.
+func macDesktopBinaries() []string {
+	paths := []string{"/Applications/Claude.app/Contents/MacOS/Claude"}
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, "Applications/Claude.app/Contents/MacOS/Claude"))
+	}
+	return paths
+}
+
 func desktopBinary() (string, error) {
 	p := os.Getenv("CCENV_DESKTOP_BIN")
+	if p == "" && runtime.GOOS == "darwin" {
+		for _, candidate := range macDesktopBinaries() {
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
+		}
+		return "", errors.New("find Claude Desktop: Claude.app is not in /Applications or ~/Applications; set CCENV_DESKTOP_BIN to Claude.app/Contents/MacOS/Claude")
+	}
 	if p == "" {
 		p = "claude-desktop"
 	}
@@ -179,7 +196,25 @@ func launchDesktop(c config, name string, args []string) error {
 	argv := append([]string{bin, "--user-data-dir=" + dir}, args...)
 	// The Code tab reads CLAUDE_CONFIG_DIR for settings, plugins, and history;
 	// Desktop signs Claude Code in with its own login.
-	return syscall.Exec(bin, argv, withClaudeDirs(withoutSessionEnv(os.Environ()), p.Dir, p.Dir))
+	env := withClaudeDirs(withoutSessionEnv(os.Environ()), p.Dir, p.Dir)
+	if runtime.GOOS == "darwin" {
+		return startDetached(bin, argv, env)
+	}
+	return syscall.Exec(bin, argv, env)
+}
+
+// startDetached runs Desktop in its own session, so closing the terminal that
+// launched it does not quit it (Desktop exits on SIGHUP). macOS has no
+// launcher entries, so a terminal is the usual starting point there. `open`
+// would detach too, but it does not pass the environment to the app.
+func startDetached(bin string, argv, env []string) error {
+	cmd := exec.Command(bin, argv[1:]...)
+	cmd.Env = env
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start Claude Desktop: %w", err)
+	}
+	return cmd.Process.Release()
 }
 
 // withoutSessionEnv drops the variables a running Claude Code session exports
