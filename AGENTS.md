@@ -18,6 +18,12 @@ Anthropic.
 - Launch must verify the active Claude account against the identity recorded
   for the profile. Do not copy, swap, or store credentials in the global config.
 - Arguments after `ccenv run --` must reach Claude unchanged.
+- `ccenv desktop` must always set `--user-data-dir` from the profile and refuse
+  one from the caller. Desktop logins cannot be pinned; say so rather than
+  implying they are verified. `desktop install`/`uninstall` touch only entries
+  marked `X-Ccenv-Managed=true`.
+- `ccenv list --json` is the contract the embedded Omarchy plugin
+  (`omarchy/rarebit.ccenv`) reads. Change both together.
 - The interactive `cc` Bash function belongs in `ccenv init bash`; the bare
   `ccenv run --` command must work without shell setup.
 

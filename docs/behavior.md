@@ -70,9 +70,48 @@ the account Claude reports before launching, even when that account matches the
 saved pin. It does not change the login, the saved pin, or the selected config
 directory. Without the flag, the selected profile's pin remains mandatory.
 
+## Claude Desktop
+
+`ccenv desktop` uses the same selection order as `ccenv run`, and the same
+environment check. It launches `claude-desktop` (or `CCENV_DESKTOP_BIN`) with
+`--user-data-dir` set to the profile's `desktop_dir`, or to
+`$XDG_DATA_HOME/ccenv/desktop/NAME` when none is set. It also sets
+`CLAUDE_CONFIG_DIR` and `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the profile
+directory. Arguments after `--` reach Desktop unchanged, except that a
+caller-supplied `--user-data-dir` is refused. The packaged app deletes
+`CLAUDE_USER_DATA_DIR` from its environment at startup, so the command-line
+switch is the supported lever.
+
+Electron takes its single-instance lock inside the user data directory. A
+second launch of a running profile therefore forwards its arguments, including
+a `claude://` link, to that profile's window and exits. Launches of different
+profiles run side by side. `ccenv` reads the lock symlink
+(`SingletonLock -> HOST-PID`) to report whether a profile is running; a lock
+from another host or a dead process does not count.
+
+Desktop signs in on its own and offers no command that reports the signed-in
+account, so a Desktop launch does not check the profile's pin.
+
+`ccenv desktop handle [ARGS...]` is the launcher's entry point. Without a
+`claude://` argument it launches the selected profile. With one, it picks a
+profile in this order:
+
+1. the only profile whose Desktop is running;
+2. among several running profiles, the one ccenv launched most recently, then
+   the global default, then the first by name;
+3. with none running, the most recently launched profile, then the global
+   default.
+
+`ccenv desktop install` refuses to replace a `com.anthropic.Claude.desktop`
+in `$XDG_DATA_HOME/applications` that it did not write. Entries it writes carry
+`X-Ccenv-Managed=true`, which `install` and `uninstall` require before they
+remove a file.
+
 ## Limits
 
 - A profile's pinned identity proves what Claude Code reported when you registered or refreshed it. It cannot establish that you chose the right account at that moment. Inspect the output from `add`, `refresh`, and `check`.
 - The `cc` function is for interactive Bash shells. Scripts can call `ccenv run -- ...` directly. GUI integrations that invoke `claude` themselves do not automatically use `ccenv`.
+- Desktop logins are not pinned. A Desktop profile signed in to the wrong account is caught only by looking at Desktop's settings.
+- `claude://` routing is a guess when more than one profile is running. Start sign-ins one profile at a time.
 - `ccenv` selects accounts at process launch. It does not switch a running Claude session or rotate accounts on usage limits.
 - Profile directories isolate user-level data as supported by `CLAUDE_CONFIG_DIR`; project and managed settings may still apply to the same working directory.

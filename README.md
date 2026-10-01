@@ -154,6 +154,51 @@ intentionally run `ccenv refresh`.
 
 If no `.ccenv` and no global default exist, `cc` stops with an error. Run `ccenv default <name>` to set the fallback. The explicit `--profile` option works even when a local selector is invalid, so you can still launch a chosen profile while fixing the dotfile.
 
+## Claude Desktop profiles
+
+`ccenv desktop` starts the Claude desktop app with a profile of its own. Each
+profile gets a separate Electron user data directory, so its Desktop login,
+chats, settings, and connectors stay apart, and several profiles can run side
+by side. Desktop's Code tab also receives the profile's `CLAUDE_CONFIG_DIR`, so
+it shares settings, plugins, and history with that profile's terminal sessions.
+
+```sh
+ccenv desktop                      # selected profile (nearest .ccenv, then default)
+ccenv desktop --profile sidekick   # explicit profile
+ccenv desktop install              # app-menu launchers + claude:// routing (Linux)
+ccenv discover                     # print `ccenv add` lines for unregistered ~/.claude* dirs
+```
+
+Desktop keeps its own login, separate from Claude Code's credentials, and has
+no command that reports which account is signed in. `ccenv` therefore cannot
+check a Desktop login against the profile's pin: sign in once per profile, and
+check the account in Desktop's settings. The profile's pin still guards every
+`ccenv run` launch.
+
+`ccenv desktop install` writes a `Claude (NAME)` launcher for every profile to
+`$XDG_DATA_HOME/applications` and removes launchers for profiles you have
+unregistered. It also writes a hidden `com.anthropic.Claude.desktop` that
+shadows the packaged entry and makes `ccenv desktop handle` the `claude://`
+handler. Desktop's sign-in returns through a `claude://` link, which would
+otherwise reach whichever profile the system launches by default. `ccenv`
+sends each link to the only running profile, or else to the profile it
+launched most recently, and that running window receives it. If you sign in to
+two profiles at once, finish one before starting the other. `ccenv desktop
+uninstall` removes only the entries ccenv wrote. Install the launchers again
+after you add or remove a profile.
+
+On Omarchy, `ccenv omarchy install` adds the `rarebit.ccenv` bar plugin, then
+`omarchy plugin enable rarebit.ccenv` turns it on. It lists your profiles from
+`ccenv list --json`, shows which ones have Desktop running, and opens a profile,
+a new chat, or a new Claude Code session without a terminal. Reinstall it after
+you move the `ccenv` binary, because it records the binary's absolute path.
+
+Desktop on Linux is the official beta package (Debian and Ubuntu; Arch users
+can install the AUR `claude-desktop` repackage). Set `CCENV_DESKTOP_BIN` if its
+launcher is not `claude-desktop` on `PATH`. On macOS, point `CCENV_DESKTOP_BIN`
+at `Claude.app/Contents/MacOS/Claude`; the launcher and plugin commands are
+Linux-only.
+
 ## Commands
 
 | Command | Effect |
@@ -163,12 +208,16 @@ If no `.ccenv` and no global default exist, `cc` stops with an error. Run `ccenv
 | `ccenv default NAME` | Set the profile used when no project selector exists. |
 | `ccenv local NAME` | Write `.ccenv` in the current directory. |
 | `ccenv current` | Show the selected name, config directory, and source of the selection. |
-| `ccenv list` | List profiles; `*` marks the global default. |
+| `ccenv list [--json]` | List profiles; `*` marks the global default. `--json` adds each profile's Desktop data directory and whether Desktop is running, for launchers. |
+| `ccenv discover` | Print an `ccenv add` command for each unregistered `~/.claude*` config directory. It reads file names only. |
 | `ccenv check` | Verify every registered login and report profiles using the same account. |
 | `ccenv run -- [CLAUDE_ARGS...]` | Launch Claude with the selected profile, forwarding arguments unchanged. |
 | `ccenv run --profile NAME -- [CLAUDE_ARGS...]` | Launch once with an explicit profile. |
 | `ccenv run --account NAME -- [CLAUDE_ARGS...]` | Use the selected config with another registered profile's pinned credentials. |
 | `ccenv run --ignore-pin -- [CLAUDE_ARGS...]` | For one launch, bypass the selected profile's account pin while showing the reported login. |
+| `ccenv desktop [--profile NAME] [-- ARGS...]` | Launch Claude Desktop with the profile's own user data directory and `CLAUDE_CONFIG_DIR`. |
+| `ccenv desktop install` / `uninstall` | Write or remove per-profile app launchers and the `claude://` link router (Linux). |
+| `ccenv omarchy install [--dir DIR]` | Install the Omarchy bar plugin `rarebit.ccenv`. |
 | `ccenv init bash` | Print the interactive `cc` shell function. |
 | `ccenv version` | Print the installed version. |
 
@@ -180,6 +229,9 @@ If no `.ccenv` and no global default exist, `cc` stops with an error. Run `ccenv
 - `.ccenv`: one profile name, found by walking from the working directory to the filesystem root.
 - `CCENV_CONFIG`: use a different global config path, useful for testing.
 - `CCENV_CLAUDE_BIN`: explicit path to the Claude Code executable, if it is not discoverable on `PATH`.
+- `CCENV_DESKTOP_BIN`: explicit path to the Claude Desktop executable (default `claude-desktop` on `PATH`).
+- `$XDG_DATA_HOME/ccenv/desktop/NAME`: a profile's Desktop user data directory, unless the profile sets `desktop_dir` in the config.
+- `$XDG_STATE_HOME/ccenv/desktop-last`: the profile ccenv last launched in Desktop, used to route `claude://` links.
 
 The global config stores directory paths, account emails, and organization IDs, but no tokens. It is written with mode `0600`. `ccenv` checks account identity at launch, but it cannot tell whether an account was already wrong when you registered it. Claude Code also applies project settings independently of the selected user config directory. The `cc` shell function covers terminal launches; other programs that start Claude directly need their own `ccenv run` integration.
 
