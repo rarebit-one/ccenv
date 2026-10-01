@@ -21,9 +21,10 @@ import (
 )
 
 type profile struct {
-	Dir   string `json:"dir"`
-	Email string `json:"email"`
-	OrgID string `json:"org_id"`
+	Dir        string `json:"dir"`
+	Email      string `json:"email"`
+	OrgID      string `json:"org_id"`
+	DesktopDir string `json:"desktop_dir,omitempty"`
 }
 
 type config struct {
@@ -63,6 +64,9 @@ func buildVersion() string {
 func main() {
 	if err := dispatch(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "ccenv:", err)
+		if len(os.Args) > 1 && os.Args[1] == "desktop" {
+			notifyDesktopError(err)
+		}
 		os.Exit(1)
 	}
 }
@@ -137,10 +141,22 @@ func dispatch(args []string) error {
 		}
 		return current()
 	case "list":
+		if len(args) == 2 && args[1] == "--json" {
+			return listJSON()
+		}
 		if len(args) != 1 {
-			return errors.New("usage: ccenv list")
+			return errors.New("usage: ccenv list [--json]")
 		}
 		return list()
+	case "discover":
+		if len(args) != 1 {
+			return errors.New("usage: ccenv discover")
+		}
+		return discover()
+	case "desktop":
+		return desktop(args[1:])
+	case "omarchy":
+		return omarchy(args[1:])
 	case "check":
 		if len(args) != 1 {
 			return errors.New("usage: ccenv check")
@@ -164,10 +180,15 @@ func usage() {
   ccenv default <name>                    Set the global fallback
   ccenv local <name>                      Write .ccenv in the current directory
   ccenv current                           Show the selected profile and source
-  ccenv list                              List registered profiles
+  ccenv list [--json]                     List registered profiles
+  ccenv discover                          Find unregistered Claude config directories
   ccenv check                             Verify logins and flag duplicate accounts
   ccenv run [--profile <name>] [--account <name>] [--ignore-pin] -- [args]
                                            Launch Claude Code
+  ccenv desktop [--profile <name>] [-- args]
+                                           Launch Claude Desktop with the profile's own app data
+  ccenv desktop install | uninstall       Manage per-profile app launchers and claude:// routing
+  ccenv omarchy install                   Install the Omarchy bar plugin (rarebit.ccenv)
   ccenv init bash                         Print the interactive cc shell function
   ccenv version                           Print the installed version
 `)
@@ -697,6 +718,17 @@ func check() error {
 	return nil
 }
 
+// refuseOverrideEnv stops a launch when the caller's environment could replace
+// the subscription the profile selects.
+func refuseOverrideEnv() error {
+	for _, key := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY", "CLAUDE_CODE_USE_MANTLE"} {
+		if os.Getenv(key) != "" {
+			return fmt.Errorf("%s is set and may override the subscription; unset it before launching", key)
+		}
+	}
+	return nil
+}
+
 func run(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	name := fs.String("profile", "", "profile override")
@@ -726,10 +758,8 @@ func run(args []string) error {
 			return err
 		}
 	}
-	for _, key := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY", "CLAUDE_CODE_USE_MANTLE"} {
-		if os.Getenv(key) != "" {
-			return fmt.Errorf("%s is set and may override the subscription; unset it before running cc", key)
-		}
+	if err := refuseOverrideEnv(); err != nil {
+		return err
 	}
 	auth, err := getAuth(accountProfile.Dir, accountProfile.Dir)
 	if err != nil {
