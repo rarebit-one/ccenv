@@ -204,3 +204,21 @@ Account aliases route requests within one gateway. They prevent ordinary model
 and subagent selection from switching accounts, but are not a security boundary:
 a caller with the gateway key can deliberately request another account's alias.
 The gateway must keep restricted credentials out of its unprefixed model pool.
+
+### Preserve a claude.ai login through a gateway
+
+Set `proxy.auth_mode` to `"claudeai"` when the gateway accepts a separate
+`x-api-key` header and routes to the intended Claude account. ccenv verifies the
+local claude.ai email and organization pin before launch, sets
+`ANTHROPIC_BASE_URL`, and sends the gateway key through
+`ANTHROPIC_CUSTOM_HEADERS`. It does not set `ANTHROPIC_AUTH_TOKEN` or
+`ANTHROPIC_API_KEY`, allowing Claude Code to retain its native subscription
+identity and organization features. An inherited `ANTHROPIC_CUSTOM_HEADERS`
+value is rejected in this mode to prevent conflicting authentication headers.
+
+The default `"gateway"` mode continues to use `ANTHROPIC_AUTH_TOKEN` and needs
+no local login while the proxy is available. A native login reported by Claude
+Code does not verify a gateway's billing policy or serving account; the gateway
+operator must independently verify upstream credentials and account routing.
+
+See [Anthropic's gateway subscription behavior](https://code.claude.com/docs/en/gateways#subscriptions-and-gateways).
