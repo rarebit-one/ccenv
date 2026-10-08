@@ -14,6 +14,58 @@ The directory search includes the current directory and walks to the filesystem 
 
 An empty, invalid, or unknown selector is an error. `ccenv` does not fall back to a parent selector or global default in that case. With no selector and no default, it also stops. This prevents an unnoticed typo from launching another account.
 
+### Folder proxy settings
+
+A `.ccenv` can also contain one JSON object:
+
+```json
+{
+  "profile": "rarebit",
+  "proxy": {
+    "url": "http://127.0.0.1:18321",
+    "api_key_file": "~/.config/ccenv/keys/rarebit",
+    "model": "claude-sonnet-4-6",
+    "timeout_seconds": 3
+  }
+}
+```
+
+The nearest selector wins as a whole. A child one-line selector chooses direct
+login and does not inherit its parent's proxy. An explicit `--profile` override
+also chooses the registered direct profile without inheriting folder settings.
+Unknown JSON fields, invalid profiles, malformed settings, and multiple JSON
+objects stop selection. Key paths may be absolute, start with `~/`, or be
+relative to the selector's directory. The key file must be a regular file with
+no group or other permissions, containing one nonempty key of at most 4096 bytes.
+Inline keys are not accepted.
+
+Proxy URLs require HTTPS or loopback HTTP and cannot contain embedded
+credentials, a query, a fragment, or a trailing `/v1`. The preflight sends the
+client key to `GET <url>/v1/models`, refuses redirects, and requires a nonempty
+model catalog. An optional `model` must be advertised by that catalog. The
+preflight timeout defaults to three seconds and accepts values from one to 30.
+
+On success, ccenv launches Claude with the selected config directory,
+`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and the optional `ANTHROPIC_MODEL`.
+It does not check the local login in this branch. The client key authenticates
+to the configured endpoint; the gateway owns upstream account selection. A
+successful catalog request does not prove a particular upstream identity,
+available quota, or successful inference.
+
+On a connection, HTTP, catalog, or model failure, ccenv opens `/dev/tty` and
+offers a direct launch with the selected profile's email and organization.
+Only a complete `y` or `yes` response accepts. Blank input, no, EOF, and a
+missing terminal stop the launch. Piped Claude input is never used for consent.
+The accepted direct launch follows the usual pin check and carries no proxy
+settings. Invalid configuration and unreadable key files fail without prompting.
+`--direct` skips proxy preflight and uses the same verified direct launch.
+`--account` and `--ignore-pin` require `--direct` in a proxy-configured folder.
+Caller credential and gateway environment overrides remain prohibited in both
+modes. Proxy settings do not apply to Claude Desktop.
+
+This preflight happens at process launch. ccenv replaces itself with Claude and
+cannot switch a running session if the proxy fails later.
+
 ## Profile registration
 
 `ccenv add NAME DIR` requires an existing directory and a logged-in `claude.ai` account. It runs `claude auth status --json` with `CLAUDE_CONFIG_DIR=DIR` and records the reported email and organization ID. The original directory stays in place. `ccenv refresh NAME` records a new identity after an intentional login change. Claude Code documents [`CLAUDE_CONFIG_DIR`](https://code.claude.com/docs/en/env-vars) for running multiple accounts side by side.

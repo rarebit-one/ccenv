@@ -42,6 +42,7 @@ type authStatus struct {
 type selection struct {
 	Name   string
 	Source string
+	Proxy  *proxyConfig
 }
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -93,13 +94,13 @@ func dispatch(args []string) error {
     case "${1-}" in
       --profile|--account)
         if (($# < 2)); then
-          printf 'usage: cc [--profile <name>] [--account <name>] [--ignore-pin] [--] [CLAUDE_ARGS...]\n' >&2
+          printf 'usage: cc [--profile <name>] [--account <name>] [--ignore-pin] [--direct] [--] [CLAUDE_ARGS...]\n' >&2
           return 2
         fi
         ccenv_args+=("$1" "$2")
         shift 2
         ;;
-      --ignore-pin)
+      --ignore-pin|--direct)
         ccenv_args+=("$1")
         shift
         ;;
@@ -131,10 +132,7 @@ func dispatch(args []string) error {
 		}
 		return setDefault(args[1])
 	case "local":
-		if len(args) != 2 {
-			return errors.New("usage: ccenv local <name>")
-		}
-		return setLocal(args[1])
+		return local(args[1:])
 	case "current":
 		if len(args) != 1 {
 			return errors.New("usage: ccenv current")
@@ -178,12 +176,13 @@ func usage() {
   ccenv add <name> <existing-config-dir>  Register and pin a logged-in profile
   ccenv refresh <name>                    Pin the profile's current login after re-authentication
   ccenv default <name>                    Set the global fallback
-  ccenv local <name>                      Write .ccenv in the current directory
+  ccenv local <name> [--proxy-url URL --api-key-file FILE] [--model MODEL]
+                                           Write folder settings in .ccenv
   ccenv current                           Show the selected profile and source
   ccenv list [--json]                     List registered profiles
   ccenv discover                          Find unregistered Claude config directories
   ccenv check                             Verify logins and flag duplicate accounts
-  ccenv run [--profile <name>] [--account <name>] [--ignore-pin] -- [args]
+  ccenv run [--profile <name>] [--account <name>] [--ignore-pin] [--direct] -- [args]
                                            Launch Claude Code
   ccenv desktop [--profile <name>] [-- args]
                                            Launch Claude Desktop with the profile's own app data
@@ -583,7 +582,7 @@ func setLocal(name string) error {
 	return nil
 }
 
-func parseDotfile(path string) (string, error) {
+func parseLegacyDotfile(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -610,7 +609,7 @@ func selectProfile(c config, cwd, override string) (selection, error) {
 		if _, err := requireProfile(c, override); err != nil {
 			return selection{}, err
 		}
-		return selection{override, "--profile"}, nil
+		return selection{Name: override, Source: "--profile"}, nil
 	}
 	dir, err := filepath.Abs(cwd)
 	if err != nil {
@@ -619,14 +618,14 @@ func selectProfile(c config, cwd, override string) (selection, error) {
 	for {
 		path := filepath.Join(dir, ".ccenv")
 		if _, err := os.Stat(path); err == nil {
-			name, err := parseDotfile(path)
+			folder, err := parseDotfile(path)
 			if err != nil {
 				return selection{}, err
 			}
-			if _, err := requireProfile(c, name); err != nil {
+			if _, err := requireProfile(c, folder.Profile); err != nil {
 				return selection{}, fmt.Errorf("%s: %w", path, err)
 			}
-			return selection{name, path}, nil
+			return selection{Name: folder.Profile, Source: path, Proxy: folder.Proxy}, nil
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return selection{}, err
 		}
@@ -642,7 +641,7 @@ func selectProfile(c config, cwd, override string) (selection, error) {
 	if _, err := requireProfile(c, c.Default); err != nil {
 		return selection{}, err
 	}
-	return selection{c.Default, "global default"}, nil
+	return selection{Name: c.Default, Source: "global default"}, nil
 }
 
 func selected(c config, override string) (selection, profile, error) {
@@ -668,6 +667,9 @@ func current() error {
 		return err
 	}
 	fmt.Printf("%s → %s (from %s)\n", s.Name, p.Dir, s.Source)
+	if s.Proxy != nil {
+		fmt.Printf("Proxy: %s (direct fallback account: %s)\n", s.Proxy.URL, s.Name)
+	}
 	return nil
 }
 
@@ -758,6 +760,7 @@ func run(args []string) error {
 	name := fs.String("profile", "", "profile override")
 	account := fs.String("account", "", "registered account profile whose credentials to use")
 	ignorePin := fs.Bool("ignore-pin", false, "bypass the saved account identity for this launch")
+	direct := fs.Bool("direct", false, "skip the folder proxy and use the pinned direct login")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -777,13 +780,32 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := refuseOverrideEnv(); err != nil {
+		return err
+	}
+	if s.Proxy != nil && !*direct {
+		if *account != "" || *ignorePin {
+			return errors.New("--account and --ignore-pin require --direct when a folder proxy is configured")
+		}
+		key, err := readProxyKey(s.Proxy.APIKeyFile)
+		if err != nil {
+			return err
+		}
+		if err := checkProxy(*s.Proxy, key); err == nil {
+			bin, err := claudeBinary()
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s\n", s.Name, s.Proxy.URL)
+			return syscall.Exec(bin, append([]string{bin}, fs.Args()...), proxyEnvironment(os.Environ(), p.Dir, *s.Proxy, key))
+		} else if err := offerDirectFallback(err, accountName, accountProfile); err != nil {
+			return err
+		}
+	}
 	if accountProfile.Dir != p.Dir {
 		if err := requireSeparateCredentialsSupport(); err != nil {
 			return err
 		}
-	}
-	if err := refuseOverrideEnv(); err != nil {
-		return err
 	}
 	auth, err := getAuth(accountProfile.Dir, accountProfile.Dir)
 	if err != nil {
