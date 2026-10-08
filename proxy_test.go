@@ -115,6 +115,7 @@ if [ "$1" = auth ]; then
 fi
 printf 'DIR=%s\nURL=%s\nTOKEN=%s\nMODEL=%s\n' "$CLAUDE_CONFIG_DIR" "$ANTHROPIC_BASE_URL" "$ANTHROPIC_AUTH_TOKEN" "$ANTHROPIC_MODEL"
 for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
+printf 'SONNET=%s\nOPUS=%s\nHAIKU=%s\nSUBAGENT=%s\n' "$ANTHROPIC_DEFAULT_SONNET_MODEL" "$ANTHROPIC_DEFAULT_OPUS_MODEL" "$ANTHROPIC_DEFAULT_HAIKU_MODEL" "$CLAUDE_CODE_SUBAGENT_MODEL"
 `
 	if err := os.WriteFile(claude, []byte(script), 0700); err != nil {
 		t.Fatal(err)
@@ -135,7 +136,7 @@ for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
 		fmt.Fprint(w, `{"data":[{"id":"claude-test"}]}`)
 	}))
 	defer server.Close()
-	selector := fmt.Sprintf(`{"profile":"work","proxy":{"url":%q,"api_key_file":%q,"model":"claude-test"}}`, server.URL, keyFile)
+	selector := fmt.Sprintf(`{"profile":"work","proxy":{"url":%q,"api_key_file":%q,"model":"claude-test","default_models":{"sonnet":"claude-test","opus":"claude-test","haiku":"claude-test"}}}`, server.URL, keyFile)
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(selector), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -158,6 +159,9 @@ for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
 	}
 	if _, err := os.Stat(filepath.Join(root, "auth-check")); !os.IsNotExist(err) {
 		t.Fatal("proxy launch consulted the local login")
+	}
+	if !strings.Contains(output, "SONNET=claude-test\nOPUS=claude-test\nHAIKU=claude-test\nSUBAGENT=claude-test\n") {
+		t.Fatalf("proxy defaults were not passed to Claude: %s", output)
 	}
 	output, err = call("run", "--account", "work", "--")
 	if err == nil || !strings.Contains(output, "require --direct") || strings.Contains(output, "DIR=") {
