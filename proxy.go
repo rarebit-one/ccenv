@@ -23,6 +23,7 @@ type folderConfig struct {
 }
 
 type proxyConfig struct {
+	AuthMode       string            `json:"auth_mode,omitempty"`
 	URL            string            `json:"url"`
 	APIKeyFile     string            `json:"api_key_file"`
 	Model          string            `json:"model,omitempty"`
@@ -61,6 +62,9 @@ func parseDotfile(path string) (folderConfig, error) {
 }
 
 func validateProxy(p *proxyConfig, directory string) error {
+	if p.AuthMode != "" && p.AuthMode != "gateway" && p.AuthMode != "claudeai" {
+		return errors.New("proxy auth_mode must be gateway or claudeai")
+	}
 	u, err := url.Parse(p.URL)
 	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("proxy URL must have a host and no embedded credentials, query, or fragment")
@@ -247,6 +251,9 @@ func proxyEnvironment(env []string, dir string, p proxyConfig, key string) []str
 	result := make([]string, 0, len(env)+3)
 	for _, value := range env {
 		name, _, _ := strings.Cut(value, "=")
+		if p.AuthMode == "claudeai" && name == "ANTHROPIC_CUSTOM_HEADERS" {
+			continue
+		}
 		if _, exists := overrides[name]; exists {
 			continue
 		}
@@ -254,7 +261,12 @@ func proxyEnvironment(env []string, dir string, p proxyConfig, key string) []str
 			result = append(result, value)
 		}
 	}
-	result = append(result, "ANTHROPIC_BASE_URL="+p.URL, "ANTHROPIC_AUTH_TOKEN="+key)
+	result = append(result, "ANTHROPIC_BASE_URL="+p.URL)
+	if p.AuthMode == "claudeai" {
+		result = append(result, "ANTHROPIC_CUSTOM_HEADERS=x-api-key: "+key)
+	} else {
+		result = append(result, "ANTHROPIC_AUTH_TOKEN="+key)
+	}
 	if p.Model != "" {
 		result = append(result, "ANTHROPIC_MODEL="+p.Model)
 	}

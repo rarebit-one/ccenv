@@ -792,6 +792,18 @@ func run(args []string) error {
 			return err
 		}
 		if err := checkProxy(*s.Proxy, key); err == nil {
+			if s.Proxy.AuthMode == "claudeai" {
+				if os.Getenv("ANTHROPIC_CUSTOM_HEADERS") != "" {
+					return errors.New("ANTHROPIC_CUSTOM_HEADERS is set; unset it before using claudeai proxy authentication")
+				}
+				auth, err := getAuth(p.Dir, p.Dir)
+				if err != nil {
+					return err
+				}
+				if auth.AuthMethod != "claude.ai" || auth.Email != p.Email || auth.OrgID != p.OrgID {
+					return fmt.Errorf("%s proxy requires the pinned claude.ai login: expected %s / %s, found %s / %s (%s)", s.Name, p.Email, p.OrgID, auth.Email, auth.OrgID, auth.AuthMethod)
+				}
+			}
 			bin, err := claudeBinary()
 			if err != nil {
 				return err

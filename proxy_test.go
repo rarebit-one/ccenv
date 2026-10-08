@@ -39,6 +39,7 @@ func TestFolderProxySelection(t *testing.T) {
 		`{"profile":"work","proxy":{"url":"https://example.test/v1","api_key_file":"key"}}`,
 		`{"profile":"work","proxy":{"url":"https://user:secret@example.test","api_key_file":"key"}}`,
 		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","timeout_seconds":-1}}`,
+		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","auth_mode":"unknown"}}`,
 		`{"profile":"work"} {"profile":"other"}`,
 		`{"profile":"unknown"}`,
 	} {
@@ -110,12 +111,13 @@ func TestCLIProxyLaunchAndExplicitDirect(t *testing.T) {
 	script := `#!/bin/sh
 if [ "$1" = auth ]; then
   printf 'checked\n' > "$FAKE_AUTH_LOG"
-  printf '{"loggedIn":true,"email":"%s","orgId":"work-org","authMethod":"claude.ai"}\n' "${FAKE_EMAIL:-work@example.test}"
+  printf '{"loggedIn":true,"email":"%s","orgId":"work-org","authMethod":"%s"}\n' "${FAKE_EMAIL:-work@example.test}" "${FAKE_AUTH_METHOD:-claude.ai}"
   exit 0
 fi
 printf 'DIR=%s\nURL=%s\nTOKEN=%s\nMODEL=%s\n' "$CLAUDE_CONFIG_DIR" "$ANTHROPIC_BASE_URL" "$ANTHROPIC_AUTH_TOKEN" "$ANTHROPIC_MODEL"
 for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
 printf 'SONNET=%s\nOPUS=%s\nHAIKU=%s\nSUBAGENT=%s\n' "$ANTHROPIC_DEFAULT_SONNET_MODEL" "$ANTHROPIC_DEFAULT_OPUS_MODEL" "$ANTHROPIC_DEFAULT_HAIKU_MODEL" "$CLAUDE_CODE_SUBAGENT_MODEL"
+printf 'HEADERS=%s\n' "$ANTHROPIC_CUSTOM_HEADERS"
 `
 	if err := os.WriteFile(claude, []byte(script), 0700); err != nil {
 		t.Fatal(err)
@@ -166,6 +168,32 @@ printf 'SONNET=%s\nOPUS=%s\nHAIKU=%s\nSUBAGENT=%s\n' "$ANTHROPIC_DEFAULT_SONNET_
 	output, err = call("run", "--account", "work", "--")
 	if err == nil || !strings.Contains(output, "require --direct") || strings.Contains(output, "DIR=") {
 		t.Fatalf("conflicting account override: %v %s", err, output)
+	}
+	nativeSelector := strings.Replace(selector, `"proxy":{`, `"proxy":{"auth_mode":"claudeai",`, 1)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(nativeSelector), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--", "-p", "hello world")
+	if err != nil || !strings.Contains(output, "TOKEN=\nMODEL=claude-test\n") || !strings.Contains(output, "HEADERS=x-api-key: test-client-key\n") {
+		t.Fatalf("native subscription proxy launch: %v %s", err, output)
+	}
+	if _, err := os.Stat(filepath.Join(root, "auth-check")); err != nil {
+		t.Fatal("native subscription proxy skipped the local identity check")
+	}
+	t.Setenv("FAKE_EMAIL", "other@example.test")
+	output, err = call("run", "--")
+	if err == nil || !strings.Contains(output, "requires the pinned claude.ai login") || strings.Contains(output, "DIR=") {
+		t.Fatalf("native subscription proxy accepted another account: %v %s", err, output)
+	}
+	t.Setenv("FAKE_EMAIL", "work@example.test")
+	t.Setenv("FAKE_AUTH_METHOD", "api_key")
+	output, err = call("run", "--")
+	if err == nil || !strings.Contains(output, "not logged in with a claude.ai account") || strings.Contains(output, "DIR=") {
+		t.Fatalf("native subscription proxy accepted API authentication: %v %s", err, output)
+	}
+	t.Setenv("FAKE_AUTH_METHOD", "claude.ai")
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(selector), 0600); err != nil {
+		t.Fatal(err)
 	}
 	server.Close()
 	output, err = call("run", "--", "-c")
