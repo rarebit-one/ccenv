@@ -190,3 +190,17 @@ remove a file.
 - On macOS, `claude://` links reach the app bundle directly, so `ccenv` cannot route them at all. Sign in with only the target profile's Desktop running.
 - `ccenv` selects accounts at process launch. It does not switch a running Claude session or rotate accounts on usage limits.
 - Profile directories isolate user-level data as supported by `CLAUDE_CONFIG_DIR`; project and managed settings may still apply to the same working directory.
+
+### Account model defaults on a shared gateway
+
+The optional `proxy.default_models` object maps `sonnet`, `opus`, and `haiku`
+to advertised model IDs, such as `sidekick/claude-sonnet-4-6`. ccenv sets the
+corresponding `ANTHROPIC_DEFAULT_*_MODEL` variables for proxy launches. When
+`sonnet` is set, `CLAUDE_CODE_SUBAGENT_MODEL` uses that value too. All configured
+model IDs must appear in the preflight catalog. These defaults override inherited
+values only for the proxy process; direct fallback does not receive them.
+
+Account aliases route requests within one gateway. They prevent ordinary model
+and subagent selection from switching accounts, but are not a security boundary:
+a caller with the gateway key can deliberately request another account's alias.
+The gateway must keep restricted credentials out of its unprefixed model pool.

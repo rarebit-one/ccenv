@@ -23,10 +23,11 @@ type folderConfig struct {
 }
 
 type proxyConfig struct {
-	URL            string `json:"url"`
-	APIKeyFile     string `json:"api_key_file"`
-	Model          string `json:"model,omitempty"`
-	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
+	URL            string            `json:"url"`
+	APIKeyFile     string            `json:"api_key_file"`
+	Model          string            `json:"model,omitempty"`
+	DefaultModels  map[string]string `json:"default_models,omitempty"`
+	TimeoutSeconds int               `json:"timeout_seconds,omitempty"`
 }
 
 func parseDotfile(path string) (folderConfig, error) {
@@ -88,6 +89,14 @@ func validateProxy(p *proxyConfig, directory string) error {
 	}
 	if strings.ContainsAny(p.Model, "\r\n\x00") {
 		return errors.New("proxy model must be a single line")
+	}
+	for alias, model := range p.DefaultModels {
+		if alias != "sonnet" && alias != "opus" && alias != "haiku" {
+			return errors.New("proxy default_models accepts only sonnet, opus and haiku")
+		}
+		if strings.TrimSpace(model) == "" || strings.ContainsAny(model, "\r\n\x00") {
+			return errors.New("proxy default_models values must be nonempty model names")
+		}
 	}
 	p.URL = strings.TrimRight(p.URL, "/")
 	if strings.HasSuffix(p.URL, "/v1") {
@@ -191,13 +200,17 @@ func checkProxy(p proxyConfig, key string) error {
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&catalog); err != nil || len(catalog.Data) == 0 {
 		return errors.New("proxy returned an invalid or empty model catalog")
 	}
-	if p.Model != "" {
-		for _, model := range catalog.Data {
-			if model.ID == p.Model {
-				return nil
-			}
-		}
+	available := map[string]bool{}
+	for _, model := range catalog.Data {
+		available[model.ID] = true
+	}
+	if p.Model != "" && !available[p.Model] {
 		return errors.New("configured proxy model is not advertised")
+	}
+	for _, model := range p.DefaultModels {
+		if !available[model] {
+			return errors.New("configured proxy default model is not advertised")
+		}
 	}
 	return nil
 }
@@ -224,8 +237,19 @@ func confirmDirect(input io.Reader, output io.Writer, cause error, name string, 
 
 func proxyEnvironment(env []string, dir string, p proxyConfig, key string) []string {
 	env = withClaudeDirs(env, dir, dir)
+	overrides := map[string]string{}
+	for alias, model := range p.DefaultModels {
+		overrides["ANTHROPIC_DEFAULT_"+strings.ToUpper(alias)+"_MODEL"] = model
+	}
+	if model := p.DefaultModels["sonnet"]; model != "" {
+		overrides["CLAUDE_CODE_SUBAGENT_MODEL"] = model
+	}
 	result := make([]string, 0, len(env)+3)
 	for _, value := range env {
+		name, _, _ := strings.Cut(value, "=")
+		if _, exists := overrides[name]; exists {
+			continue
+		}
 		if p.Model == "" || !strings.HasPrefix(value, "ANTHROPIC_MODEL=") {
 			result = append(result, value)
 		}
@@ -233,6 +257,11 @@ func proxyEnvironment(env []string, dir string, p proxyConfig, key string) []str
 	result = append(result, "ANTHROPIC_BASE_URL="+p.URL, "ANTHROPIC_AUTH_TOKEN="+key)
 	if p.Model != "" {
 		result = append(result, "ANTHROPIC_MODEL="+p.Model)
+	}
+	for _, name := range []string{"ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"} {
+		if value, exists := overrides[name]; exists {
+			result = append(result, name+"="+value)
+		}
 	}
 	return result
 }
