@@ -5,7 +5,33 @@
 
 `ccenv` launches Claude Code with the right existing login for the current directory. Each profile points at its own `CLAUDE_CONFIG_DIR`; credentials, settings, plugins, and session history stay in their original directories. It never copies or swaps credentials.
 
-The selected profile comes from the nearest `.ccenv` in the current directory or any parent. If there is no dotfile, `ccenv` uses the global default. An invalid or unknown dotfile stops the launch instead of silently choosing another account. Before launching, `ccenv` asks Claude Code for its authentication status and checks the email and organization recorded when the profile was added. See [selection and verification behavior](docs/behavior.md) for the exact rules.
+The selected profile comes from the nearest `.ccenv` in the current directory or any parent. If there is no dotfile, `ccenv` uses the global default. An invalid or unknown dotfile stops the launch instead of silently choosing another account. Direct launches check the email and organization recorded when the profile was added. A folder can instead select an authenticated proxy, with an interactive offer to use the pinned direct login when the proxy is unavailable. See [selection and verification behavior](docs/behavior.md) for the exact rules.
+
+## Use a proxy for a folder
+
+Keep the gateway client key in a private file outside the repository, with mode
+`0600`. In the folder, run:
+
+```sh
+ccenv local rarebit --proxy-url http://127.0.0.1:18321 \
+  --api-key-file '~/.config/ccenv/keys/rarebit' --model claude-sonnet-4-6
+```
+
+The command writes a JSON `.ccenv` containing the profile, URL, key-file path,
+and optional model. The URL must use HTTPS or loopback HTTP and must omit `/v1`.
+Use an inference endpoint, not a management-only UI proxy.
+
+`cc` checks the authenticated model catalog before launching. When the proxy
+cannot be used, it asks in the controlling terminal whether to launch with the
+same profile's direct login. Only `y` or `yes` accepts. The direct launch checks
+the local account pin and omits the proxy key, URL, and model. Without a terminal,
+the launch stops. `cc --direct` explicitly skips the proxy. After updating ccenv,
+open a new terminal or rerun `eval "$(ccenv init bash)"` to refresh the shortcut.
+
+Successful proxy launches do not require a local Claude login. The gateway
+controls upstream accounts; ccenv cannot pin a remote identity through the model
+catalog. Existing one-line `.ccenv` selectors keep their direct-login behavior.
+Run `ccenv local rarebit` to return the folder to that behavior.
 
 ## Install and update
 
