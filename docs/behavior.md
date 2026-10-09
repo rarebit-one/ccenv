@@ -234,3 +234,28 @@ Code does not verify a gateway's billing policy or serving account; the gateway
 operator must independently verify upstream credentials and account routing.
 
 See [Anthropic's gateway subscription behavior](https://code.claude.com/docs/en/gateways#subscriptions-and-gateways).
+
+### CLIProxyAPI quota diagnostics
+
+Set `proxy.provider` to `"cliproxyapi"` in a folder selector, or pass
+`--proxy-provider cliproxyapi` to `ccenv local` with the proxy URL and key file.
+Other providers omit this field.
+
+CLIProxyAPI can hide registered models while an account is cooling down.
+When a configured model is absent, ccenv sends a token-count request to
+`/v1/messages/count_tokens` using the regular gateway client key. This request
+produces no generated response. Healthy catalogs need no additional request.
+The diagnostic has the same timeout and redirect restrictions as the catalog
+request. No management key is needed.
+
+A structured rate-limit response reports the account and gateway retry time,
+when supplied. ccenv stops without offering direct fallback because the same
+subscription is still limited. The retry time is a gateway estimate, not proof
+that quota has reset. Wait or explicitly choose another configured account:
+
+```sh
+cc --account family --model opus
+```
+
+Missing routes, unsupported diagnostics, and gateway outages still follow the
+normal direct-fallback rules. ccenv never automatically changes accounts.

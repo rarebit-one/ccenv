@@ -852,6 +852,8 @@ func run(args []string) error {
 			}
 			fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s with %s account routing\n", s.Name, proxy.URL, accountName)
 			return syscall.Exec(bin, append([]string{bin}, fs.Args()...), proxyEnvironment(os.Environ(), launchConfigDir, accountProfile.Dir, proxy, key))
+		} else if blocked := new(proxyAccountLimit); errors.As(err, &blocked) {
+			return fmt.Errorf("%s account (%s): %w; direct login uses the same account limit. Wait for retry or explicitly choose another account with cc --account NAME --model opus", accountName, accountProfile.Email, err)
 		} else if err := offerDirectFallback(err, accountName, accountProfile); err != nil {
 			return err
 		}
