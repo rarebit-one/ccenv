@@ -158,17 +158,13 @@ checks Rarebit's saved identity pin before launch. This requires Claude Code
 request](https://github.com/anthropics/claude-code/issues/79223).
 
 For a split launch, `ccenv` creates a private config overlay under
-`$XDG_CACHE_HOME/ccenv/config-overlays` (or the OS cache directory). It copies
-the config's mutable `.claude.json` account cache there and symlinks the other
-config entries, so settings, plugins, memories, and history stay shared while
-Claude's account-cache writes stay out of the configured profile. The overlay
-is keyed by the config/account directory pair and has mode `0700`.
-
-When the config and credential profiles differ, Claude Code's `/status` may
-show the account cached in the config directory, rather than the account tied
-to the credential store. `ccenv` prints the config/account pairing before
-launch. Treat the `/status` email as cached metadata in this mode; see the
-[upstream status report](https://github.com/anthropics/claude-code/issues/79222).
+`$XDG_CACHE_HOME/ccenv/config-overlays` or the OS cache directory. It keeps the
+config profile's `.claude.json` preferences but replaces `oauthAccount` with
+metadata from the credential profile. If that account has no cached metadata,
+it removes the config profile's identity rather than showing the wrong account.
+Other config entries are symlinks, so settings, plugins, memories, and history
+stay shared while account-cache writes stay out of both configured profiles.
+The overlay is keyed by the config/account directory pair and has mode `0700`.
 
 `--profile` chooses a config directory and its pinned login for one launch. To
 launch despite a changed login, use `ccenv run --profile work --ignore-pin --`.

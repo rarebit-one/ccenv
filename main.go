@@ -347,7 +347,7 @@ func withClaudeDirs(env []string, configDir, credentialsDir string) []string {
 // splitConfigDir creates a per-config/per-account view of the config directory.
 // Claude writes the active account identity cache to .claude.json even when its
 // credentials come from a separate store. Keep that mutable cache private to
-// the split while sharing the user's settings, plugins, memory, and history.
+// the split, seed it from the credential account, and share the user's config.
 func splitConfigDir(configDir, credentialsDir string) (string, error) {
 	configDir, err := filepath.Abs(configDir)
 	if err != nil {
@@ -400,36 +400,40 @@ func splitConfigDir(configDir, credentialsDir string) (string, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("inspect split credential path: %w", err)
 	}
-	cacheSource := filepath.Join(configDir, ".claude.json")
-	if isDefaultConfigDir(configDir) {
-		cacheSource = filepath.Join(filepath.Dir(configDir), ".claude.json")
+	cache, err := readClaudeState(configDir)
+	if err != nil {
+		return "", err
+	}
+	accountCache, err := readClaudeState(credentialsDir)
+	if err != nil {
+		return "", err
+	}
+	delete(cache, "oauthAccount")
+	if account, exists := accountCache["oauthAccount"]; exists {
+		cache["oauthAccount"] = account
+	}
+	data, err := json.Marshal(cache)
+	if err != nil {
+		return "", fmt.Errorf("encode split account cache: %w", err)
 	}
 	cacheDest := filepath.Join(overlay, ".claude.json")
-	if data, err := os.ReadFile(cacheSource); err == nil {
-		tmpFile, err := os.CreateTemp(overlay, ".claude.json.tmp-")
-		if err != nil {
-			return "", fmt.Errorf("create split account cache: %w", err)
-		}
-		tmp := tmpFile.Name()
-		if _, err := tmpFile.Write(data); err != nil {
-			_ = tmpFile.Close()
-			_ = os.Remove(tmp)
-			return "", fmt.Errorf("write split account cache: %w", err)
-		}
-		if err := tmpFile.Close(); err != nil {
-			_ = os.Remove(tmp)
-			return "", fmt.Errorf("close split account cache: %w", err)
-		}
-		if err := os.Rename(tmp, cacheDest); err != nil {
-			_ = os.Remove(tmp)
-			return "", fmt.Errorf("install split account cache: %w", err)
-		}
-	} else if errors.Is(err, os.ErrNotExist) {
-		if err := os.Remove(cacheDest); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("remove stale split account cache: %w", err)
-		}
-	} else {
-		return "", fmt.Errorf("read account cache from %s: %w", configDir, err)
+	tmpFile, err := os.CreateTemp(overlay, ".claude.json.tmp-")
+	if err != nil {
+		return "", fmt.Errorf("create split account cache: %w", err)
+	}
+	tmp := tmpFile.Name()
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("write split account cache: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("close split account cache: %w", err)
+	}
+	if err := os.Rename(tmp, cacheDest); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("install split account cache: %w", err)
 	}
 	if err := os.Chmod(overlay, 0700); err != nil {
 		return "", fmt.Errorf("secure split config overlay: %w", err)
@@ -461,6 +465,28 @@ func getAuth(configDir, credentialsDir string) (authStatus, error) {
 		return s, fmt.Errorf("%s is not logged in with a claude.ai account", configDir)
 	}
 	return s, nil
+}
+
+func readClaudeState(dir string) (map[string]json.RawMessage, error) {
+	path := filepath.Join(dir, ".claude.json")
+	if isDefaultConfigDir(dir) {
+		path = filepath.Join(filepath.Dir(dir), ".claude.json")
+	}
+	state := map[string]json.RawMessage{}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return state, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read Claude state %s: %w", path, err)
+	}
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, fmt.Errorf("parse Claude state %s: %w", path, err)
+	}
+	if state == nil {
+		return nil, fmt.Errorf("Claude state %s must be a JSON object", path)
+	}
+	return state, nil
 }
 
 // CLAUDE_SECURESTORAGE_CONFIG_DIR is an undocumented Claude Code feature.
