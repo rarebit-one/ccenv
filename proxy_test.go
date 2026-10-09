@@ -40,6 +40,7 @@ func TestFolderProxySelection(t *testing.T) {
 		`{"profile":"work","proxy":{"url":"https://user:secret@example.test","api_key_file":"key"}}`,
 		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","timeout_seconds":-1}}`,
 		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","auth_mode":"unknown"}}`,
+		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","provider":"unknown"}}`,
 		`{"profile":"work"} {"profile":"other"}`,
 		`{"profile":"unknown"}`,
 	} {
@@ -166,6 +167,31 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 		cmd.Env = append(cmd.Env, "CCENV_CONFIG="+configFile, "CCENV_CLAUDE_BIN="+claude, "FAKE_AUTH_LOG="+filepath.Join(root, "auth-check"))
 		output, err := cmd.CombinedOutput()
 		return string(output), err
+	}
+	limited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			fmt.Fprint(w, `{"data":[]}`)
+			return
+		}
+		w.Header().Set("Retry-After", "3600")
+		w.WriteHeader(429)
+		fmt.Fprint(w, `{"error":{"type":"rate_limit_error","message":"All credentials for model claude-test are cooling down"}}`)
+	}))
+	defer limited.Close()
+	limitedSelector := strings.Replace(selector, server.URL, limited.URL, 1)
+	limitedSelector = strings.Replace(limitedSelector, `"proxy":{`, `"proxy":{"provider":"cliproxyapi",`, 1)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(limitedSelector), 0600); err != nil {
+		t.Fatal(err)
+	}
+	limitedOutput, limitedErr := call("run", "--")
+	if limitedErr == nil || !strings.Contains(limitedOutput, "work account (work@example.test): CLIProxyAPI account is in quota cooldown") || !strings.Contains(limitedOutput, "gateway retry time") || strings.Contains(limitedOutput, "Launch directly") || strings.Contains(limitedOutput, "DIR=") || strings.Contains(limitedOutput, "test-client-key") {
+		t.Fatalf("quota diagnostic: %v %s", limitedErr, limitedOutput)
+	}
+	if _, err := os.Stat(filepath.Join(root, "auth-check")); !os.IsNotExist(err) {
+		t.Fatal("cooldown consulted local login")
+	}
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(selector), 0600); err != nil {
+		t.Fatal(err)
 	}
 	output, err := call("run", "--", "-p", "hello world")
 	if err != nil || !strings.Contains(output, "DIR="+root+"\nURL="+server.URL+"\nTOKEN=test-client-key\nMODEL=claude-test\nARG=-p\nARG=hello world\n") {

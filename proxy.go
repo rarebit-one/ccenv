@@ -23,6 +23,7 @@ type folderConfig struct {
 }
 
 type proxyConfig struct {
+	Provider       string            `json:"provider,omitempty"`
 	AuthMode       string            `json:"auth_mode,omitempty"`
 	URL            string            `json:"url"`
 	APIKeyFile     string            `json:"api_key_file"`
@@ -62,6 +63,9 @@ func parseDotfile(path string) (folderConfig, error) {
 }
 
 func validateProxy(p *proxyConfig, directory string) error {
+	if p.Provider != "" && p.Provider != "cliproxyapi" {
+		return errors.New("proxy provider must be cliproxyapi or omitted")
+	}
 	if p.AuthMode != "" && p.AuthMode != "gateway" && p.AuthMode != "claudeai" {
 		return errors.New("proxy auth_mode must be gateway or claudeai")
 	}
@@ -115,6 +119,7 @@ func local(args []string) error {
 	}
 	fs := flag.NewFlagSet("local", flag.ContinueOnError)
 	proxyURL := fs.String("proxy-url", "", "proxy base URL")
+	provider := fs.String("proxy-provider", "", "proxy provider (cliproxyapi)")
 	keyFile := fs.String("api-key-file", "", "private file containing the gateway client key")
 	model := fs.String("model", "", "model for proxy launches")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -124,8 +129,8 @@ func local(args []string) error {
 		return errors.New("unexpected arguments after folder settings")
 	}
 	if *proxyURL == "" {
-		if *keyFile != "" || *model != "" {
-			return errors.New("--api-key-file and --model require --proxy-url")
+		if *keyFile != "" || *model != "" || *provider != "" {
+			return errors.New("--api-key-file, --model and --proxy-provider require --proxy-url")
 		}
 		return setLocal(args[0])
 	}
@@ -136,7 +141,7 @@ func local(args []string) error {
 	if _, err := requireProfile(c, args[0]); err != nil {
 		return err
 	}
-	p := &proxyConfig{URL: *proxyURL, APIKeyFile: *keyFile, Model: *model}
+	p := &proxyConfig{Provider: *provider, URL: *proxyURL, APIKeyFile: *keyFile, Model: *model}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -201,7 +206,7 @@ func checkProxy(p proxyConfig, key string) error {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&catalog); err != nil || len(catalog.Data) == 0 {
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&catalog); err != nil || catalog.Data == nil {
 		return errors.New("proxy returned an invalid or empty model catalog")
 	}
 	available := map[string]bool{}
@@ -209,12 +214,15 @@ func checkProxy(p proxyConfig, key string) error {
 		available[model.ID] = true
 	}
 	if p.Model != "" && !available[p.Model] {
-		return errors.New("configured proxy model is not advertised")
+		return missingProxyModel(client, p, key, p.Model)
 	}
-	for _, model := range p.DefaultModels {
-		if !available[model] {
-			return errors.New("configured proxy default model is not advertised")
+	for _, alias := range []string{"opus", "sonnet", "haiku"} {
+		if model := p.DefaultModels[alias]; model != "" && !available[model] {
+			return missingProxyModel(client, p, key, model)
 		}
+	}
+	if len(catalog.Data) == 0 {
+		return errors.New("proxy returned an empty model catalog")
 	}
 	return nil
 }
