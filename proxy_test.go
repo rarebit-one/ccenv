@@ -103,6 +103,12 @@ func TestProxyKeyPermissions(t *testing.T) {
 
 func TestCLIProxyLaunchAndExplicitDirect(t *testing.T) {
 	root := t.TempDir()
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	bin := filepath.Join(root, "ccenv")
 	if output, err := exec.Command("go", "build", "-buildvcs=false", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, output)
@@ -133,7 +139,6 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 	if err := os.Mkdir(personalDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
 	if err := os.WriteFile(configFile, []byte(fmt.Sprintf(`{"profiles":{"work":{"dir":%q,"email":"work@example.test","org_id":"work-org"},"personal":{"dir":%q,"email":"personal@example.test","org_id":"work-org"}}}`, root, personalDir)), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +202,7 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 	}
 	t.Setenv("FAKE_EMAIL", "personal@example.test")
 	output, err = call("run", "--account", "personal", "--", "--model", "opus")
-	if err != nil || !strings.Contains(output, "MODEL=personal/claude-test\nARG=--model\nARG=opus\n") || !strings.Contains(output, "SONNET=personal/claude-test\nOPUS=personal/claude-test\nHAIKU=personal/claude-test\nSUBAGENT=personal/claude-test\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(root, "cache", "ccenv", "config-overlays")+string(filepath.Separator)) {
+	if err != nil || !strings.Contains(output, "MODEL=personal/claude-test\nARG=--model\nARG=opus\n") || !strings.Contains(output, "SONNET=personal/claude-test\nOPUS=personal/claude-test\nHAIKU=personal/claude-test\nSUBAGENT=personal/claude-test\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
 		t.Fatalf("split native proxy account routing: %v %s", err, output)
 	}
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(nativeSelector), 0600); err != nil {
