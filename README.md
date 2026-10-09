@@ -151,11 +151,23 @@ to end ccenv options when needed. These selections apply only to that launch.
 From a Sidekick project, for
 example, `ccenv run --profile sidekick --account rarebit --` (or `cc --account
 rarebit` after loading the Bash function) uses Sidekick settings, memories,
-plugins, and history with credentials from the Rarebit profile. `--account`
-checks Rarebit's saved identity pin before launch. This requires Claude Code
+plugins, and history with credentials from the Rarebit profile. Direct and
+`claudeai` proxy launches check Rarebit's saved identity pin before launch.
+This requires Claude Code
 2.1.215 or newer and uses its currently undocumented
 `CLAUDE_SECURESTORAGE_CONFIG_DIR` feature. See the [upstream documentation
 request](https://github.com/anthropics/claude-code/issues/79223).
+
+In a folder configured with a proxy, `ccenv run --account family -- --model opus`
+keeps the folder's settings and selects the gateway's `family/` model routes.
+The selector's `model` and all three `default_models` must use the folder
+profile's prefix, for example `sidekick/`. ccenv replaces that prefix for this
+launch, including the subagent default, and checks that the new routes are
+advertised. The gateway must map those aliases to the intended account.
+Gateway-token mode can use server credentials without a local login;
+`auth_mode: "claudeai"` also verifies the selected local subscription identity.
+If the proxy fails and you accept direct fallback, the override account's
+pinned local login is used. `--direct` explicitly chooses that local login.
 
 For a split launch, `ccenv` creates a private config overlay under
 `$XDG_CACHE_HOME/ccenv/config-overlays` or the OS cache directory. It keeps the

@@ -239,8 +239,35 @@ func confirmDirect(input io.Reader, output io.Writer, cause error, name string, 
 	return err == nil && (answer == "y" || answer == "yes")
 }
 
-func proxyEnvironment(env []string, dir string, p proxyConfig, key string) []string {
-	env = withClaudeDirs(env, dir, dir)
+func proxyForAccount(p proxyConfig, configName, accountName string) (proxyConfig, error) {
+	if configName == accountName {
+		return p, nil
+	}
+	rewrite := func(model string) (string, error) {
+		prefix := configName + "/"
+		if !strings.HasPrefix(model, prefix) || len(model) == len(prefix) {
+			return "", fmt.Errorf("proxy --account requires model and all default_models to use the %s route prefix", prefix)
+		}
+		return accountName + "/" + strings.TrimPrefix(model, prefix), nil
+	}
+	var err error
+	p.Model, err = rewrite(p.Model)
+	if err != nil {
+		return proxyConfig{}, err
+	}
+	defaults := make(map[string]string, 3)
+	for _, alias := range []string{"sonnet", "opus", "haiku"} {
+		defaults[alias], err = rewrite(p.DefaultModels[alias])
+		if err != nil {
+			return proxyConfig{}, err
+		}
+	}
+	p.DefaultModels = defaults
+	return p, nil
+}
+
+func proxyEnvironment(env []string, configDir, credentialsDir string, p proxyConfig, key string) []string {
+	env = withClaudeDirs(env, configDir, credentialsDir)
 	overrides := map[string]string{}
 	for alias, model := range p.DefaultModels {
 		overrides["ANTHROPIC_DEFAULT_"+strings.ToUpper(alias)+"_MODEL"] = model

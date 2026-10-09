@@ -810,32 +810,48 @@ func run(args []string) error {
 		return err
 	}
 	if s.Proxy != nil && !*direct {
-		if *account != "" || *ignorePin {
-			return errors.New("--account and --ignore-pin require --direct when a folder proxy is configured")
+		if *ignorePin {
+			return errors.New("--ignore-pin requires --direct when a folder proxy is configured")
 		}
-		key, err := readProxyKey(s.Proxy.APIKeyFile)
+		proxy, err := proxyForAccount(*s.Proxy, s.Name, accountName)
 		if err != nil {
 			return err
 		}
-		if err := checkProxy(*s.Proxy, key); err == nil {
-			if s.Proxy.AuthMode == "claudeai" {
+		key, err := readProxyKey(proxy.APIKeyFile)
+		if err != nil {
+			return err
+		}
+		if err := checkProxy(proxy, key); err == nil {
+			if accountProfile.Dir != p.Dir {
+				if err := requireSeparateCredentialsSupport(); err != nil {
+					return err
+				}
+			}
+			if proxy.AuthMode == "claudeai" {
 				if os.Getenv("ANTHROPIC_CUSTOM_HEADERS") != "" {
 					return errors.New("ANTHROPIC_CUSTOM_HEADERS is set; unset it before using claudeai proxy authentication")
 				}
-				auth, err := getAuth(p.Dir, p.Dir)
+				auth, err := getAuth(accountProfile.Dir, accountProfile.Dir)
 				if err != nil {
 					return err
 				}
-				if auth.AuthMethod != "claude.ai" || auth.Email != p.Email || auth.OrgID != p.OrgID {
-					return fmt.Errorf("%s proxy requires the pinned claude.ai login: expected %s / %s, found %s / %s (%s)", s.Name, p.Email, p.OrgID, auth.Email, auth.OrgID, auth.AuthMethod)
+				if auth.AuthMethod != "claude.ai" || auth.Email != accountProfile.Email || auth.OrgID != accountProfile.OrgID {
+					return fmt.Errorf("%s proxy requires the pinned claude.ai login: expected %s / %s, found %s / %s (%s)", accountName, accountProfile.Email, accountProfile.OrgID, auth.Email, auth.OrgID, auth.AuthMethod)
+				}
+			}
+			launchConfigDir := p.Dir
+			if accountProfile.Dir != p.Dir {
+				launchConfigDir, err = splitConfigDir(p.Dir, accountProfile.Dir)
+				if err != nil {
+					return err
 				}
 			}
 			bin, err := claudeBinary()
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s\n", s.Name, s.Proxy.URL)
-			return syscall.Exec(bin, append([]string{bin}, fs.Args()...), proxyEnvironment(os.Environ(), p.Dir, *s.Proxy, key))
+			fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s with %s account routing\n", s.Name, proxy.URL, accountName)
+			return syscall.Exec(bin, append([]string{bin}, fs.Args()...), proxyEnvironment(os.Environ(), launchConfigDir, accountProfile.Dir, proxy, key))
 		} else if err := offerDirectFallback(err, accountName, accountProfile); err != nil {
 			return err
 		}

@@ -47,19 +47,33 @@ preflight timeout defaults to three seconds and accepts values from one to 30.
 
 On success, ccenv launches Claude with the selected config directory,
 `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and the optional `ANTHROPIC_MODEL`.
-It does not check the local login in this branch. The client key authenticates
+Gateway-token mode does not check the local login. The `claudeai` mode checks
+the selected account's native login and uses a custom gateway header instead
+of `ANTHROPIC_AUTH_TOKEN`, as described below. The client key authenticates
 to the configured endpoint; the gateway owns upstream account selection. A
 successful catalog request does not prove a particular upstream identity,
 available quota, or successful inference.
 
 On a connection, HTTP, catalog, or model failure, ccenv opens `/dev/tty` and
-offers a direct launch with the selected profile's email and organization.
+offers a direct launch with the selected account's email and organization.
 Only a complete `y` or `yes` response accepts. Blank input, no, EOF, and a
 missing terminal stop the launch. Piped Claude input is never used for consent.
 The accepted direct launch follows the usual pin check and carries no proxy
 settings. Invalid configuration and unreadable key files fail without prompting.
 `--direct` skips proxy preflight and uses the same verified direct launch.
-`--account` and `--ignore-pin` require `--direct` in a proxy-configured folder.
+`--account NAME` also works through a folder proxy. When NAME differs from the
+config profile, `model` and all three `default_models` must use the config
+profile's route prefix, such as `sidekick/claude-opus-5-5`. ccenv replaces that
+prefix with NAME and verifies the resulting models against the gateway catalog.
+The override covers startup, Opus/Sonnet/Haiku aliases, and the Sonnet subagent
+default. It preserves the endpoint, key file, and workspace settings. In
+`claudeai` mode, it checks NAME's local identity pin; the split config overlay
+also uses NAME's account cache and credential directory. Gateway-token mode
+still does not check the local login. Direct fallback uses NAME's pinned login.
+Missing or unscoped model settings stop an account override without prompting.
+The gateway must provide account-scoped aliases matching the profile names;
+ccenv cannot establish their upstream identity from the catalog.
+`--ignore-pin` requires `--direct` in a proxy-configured folder.
 Caller credential and gateway environment overrides remain prohibited in both
 modes. Proxy settings do not apply to Claude Desktop.
 
