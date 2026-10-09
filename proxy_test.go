@@ -103,12 +103,19 @@ func TestProxyKeyPermissions(t *testing.T) {
 
 func TestCLIProxyLaunchAndExplicitDirect(t *testing.T) {
 	root := t.TempDir()
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	bin := filepath.Join(root, "ccenv")
 	if output, err := exec.Command("go", "build", "-buildvcs=false", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, output)
 	}
 	claude := filepath.Join(root, "claude")
 	script := `#!/bin/sh
+if [ "$1" = --version ]; then printf '2.1.293\n'; exit 0; fi
 if [ "$1" = auth ]; then
   printf 'checked\n' > "$FAKE_AUTH_LOG"
   printf '{"loggedIn":true,"email":"%s","orgId":"work-org","authMethod":"%s"}\n' "${FAKE_EMAIL:-work@example.test}" "${FAKE_AUTH_METHOD:-claude.ai}"
@@ -118,6 +125,7 @@ printf 'DIR=%s\nURL=%s\nTOKEN=%s\nMODEL=%s\n' "$CLAUDE_CONFIG_DIR" "$ANTHROPIC_B
 for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
 printf 'SONNET=%s\nOPUS=%s\nHAIKU=%s\nSUBAGENT=%s\n' "$ANTHROPIC_DEFAULT_SONNET_MODEL" "$ANTHROPIC_DEFAULT_OPUS_MODEL" "$ANTHROPIC_DEFAULT_HAIKU_MODEL" "$CLAUDE_CODE_SUBAGENT_MODEL"
 printf 'HEADERS=%s\n' "$ANTHROPIC_CUSTOM_HEADERS"
+printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 `
 	if err := os.WriteFile(claude, []byte(script), 0700); err != nil {
 		t.Fatal(err)
@@ -127,7 +135,11 @@ printf 'HEADERS=%s\n' "$ANTHROPIC_CUSTOM_HEADERS"
 		t.Fatal(err)
 	}
 	configFile := filepath.Join(root, "config.json")
-	if err := os.WriteFile(configFile, []byte(fmt.Sprintf(`{"profiles":{"work":{"dir":%q,"email":"work@example.test","org_id":"work-org"}}}`, root)), 0600); err != nil {
+	personalDir := filepath.Join(root, "personal")
+	if err := os.Mkdir(personalDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configFile, []byte(fmt.Sprintf(`{"profiles":{"work":{"dir":%q,"email":"work@example.test","org_id":"work-org"},"personal":{"dir":%q,"email":"personal@example.test","org_id":"work-org"}}}`, root, personalDir)), 0600); err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +147,7 @@ printf 'HEADERS=%s\n' "$ANTHROPIC_CUSTOM_HEADERS"
 			http.Error(w, "unauthorized", 401)
 			return
 		}
-		fmt.Fprint(w, `{"data":[{"id":"claude-test"}]}`)
+		fmt.Fprint(w, `{"data":[{"id":"claude-test"},{"id":"work/claude-test"},{"id":"personal/claude-test"}]}`)
 	}))
 	defer server.Close()
 	selector := fmt.Sprintf(`{"profile":"work","proxy":{"url":%q,"api_key_file":%q,"model":"claude-test","default_models":{"sonnet":"claude-test","opus":"claude-test","haiku":"claude-test"}}}`, server.URL, keyFile)
@@ -166,8 +178,12 @@ printf 'HEADERS=%s\n' "$ANTHROPIC_CUSTOM_HEADERS"
 		t.Fatalf("proxy defaults were not passed to Claude: %s", output)
 	}
 	output, err = call("run", "--account", "work", "--")
-	if err == nil || !strings.Contains(output, "require --direct") || strings.Contains(output, "DIR=") {
-		t.Fatalf("conflicting account override: %v %s", err, output)
+	if err != nil || !strings.Contains(output, "MODEL=claude-test\n") {
+		t.Fatalf("explicit proxy account: %v %s", err, output)
+	}
+	output, err = call("run", "--ignore-pin", "--")
+	if err == nil || !strings.Contains(output, "requires --direct") || strings.Contains(output, "DIR=") {
+		t.Fatalf("proxy pin bypass: %v %s", err, output)
 	}
 	nativeSelector := strings.Replace(selector, `"proxy":{`, `"proxy":{"auth_mode":"claudeai",`, 1)
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(nativeSelector), 0600); err != nil {
@@ -179,6 +195,22 @@ printf 'HEADERS=%s\n' "$ANTHROPIC_CUSTOM_HEADERS"
 	}
 	if _, err := os.Stat(filepath.Join(root, "auth-check")); err != nil {
 		t.Fatal("native subscription proxy skipped the local identity check")
+	}
+	scopedSelector := strings.ReplaceAll(nativeSelector, `"claude-test"`, `"work/claude-test"`)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(scopedSelector), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FAKE_EMAIL", "personal@example.test")
+	output, err = call("run", "--account", "personal", "--", "--model", "opus")
+	if err != nil || !strings.Contains(output, "MODEL=personal/claude-test\nARG=--model\nARG=opus\n") || !strings.Contains(output, "SONNET=personal/claude-test\nOPUS=personal/claude-test\nHAIKU=personal/claude-test\nSUBAGENT=personal/claude-test\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
+		t.Fatalf("split native proxy account routing: %v %s", err, output)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(nativeSelector), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--account", "personal", "--")
+	if err == nil || !strings.Contains(output, "requires model and all default_models") || strings.Contains(output, "DIR=") {
+		t.Fatalf("unscoped proxy account override: %v %s", err, output)
 	}
 	t.Setenv("FAKE_EMAIL", "other@example.test")
 	output, err = call("run", "--")
@@ -208,5 +240,19 @@ printf 'HEADERS=%s\n' "$ANTHROPIC_CUSTOM_HEADERS"
 	output, err = call("run", "--direct", "--", "-c")
 	if err == nil || !strings.Contains(output, "identity changed") || strings.Contains(output, "DIR=") {
 		t.Fatalf("direct launch bypassed the identity pin: %v %s", err, output)
+	}
+}
+
+func TestProxyAccountRoutesRequireCompleteScope(t *testing.T) {
+	original := proxyConfig{Model: "work/opus", DefaultModels: map[string]string{"opus": "work/opus", "sonnet": "work/sonnet", "haiku": "work/haiku"}}
+	updated, err := proxyForAccount(original, "work", "personal")
+	if err != nil || updated.Model != "personal/opus" || updated.DefaultModels["sonnet"] != "personal/sonnet" || original.DefaultModels["sonnet"] != "work/sonnet" {
+		t.Fatalf("account route rewrite mutated selector or kept old route: %#v %v", updated, err)
+	}
+	for _, model := range []string{"", "sonnet", "other/sonnet", "work/"} {
+		original.DefaultModels["sonnet"] = model
+		if _, err := proxyForAccount(original, "work", "personal"); err == nil {
+			t.Fatalf("accepted incomplete or mismatched Sonnet route %q", model)
+		}
 	}
 }
