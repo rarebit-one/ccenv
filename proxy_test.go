@@ -314,8 +314,12 @@ func TestProxyAccountRoutesRequireCompleteScope(t *testing.T) {
 	if err != nil || updated.Model != "personal/opus" || updated.DefaultModels["sonnet"] != "personal/sonnet" || original.DefaultModels["sonnet"] != "work/sonnet" {
 		t.Fatalf("account route rewrite mutated selector or kept old route: %#v %v", updated, err)
 	}
-	if _, set := updated.DefaultModels["fable"]; set {
-		t.Fatalf("account route rewrite invented a Fable route: %#v", updated.DefaultModels)
+	if model, set := updated.DefaultModels["fable"]; !set || model != "" {
+		t.Fatalf("account route rewrite did not clear the Fable route: %#v", updated.DefaultModels)
+	}
+	result := proxyEnvironment([]string{"ANTHROPIC_DEFAULT_FABLE_MODEL=work/fable"}, "/config", "/config", updated, "key")
+	if slices.ContainsFunc(result, func(value string) bool { return strings.HasPrefix(value, "ANTHROPIC_DEFAULT_FABLE_MODEL=") }) {
+		t.Fatalf("account override kept the inherited Fable route: %v", result)
 	}
 	original.DefaultModels["fable"] = "work/fable"
 	updated, err = proxyForAccount(original, "work", "personal")

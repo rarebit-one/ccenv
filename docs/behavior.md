@@ -65,6 +65,8 @@ settings. Invalid configuration and unreadable key files fail without prompting.
 config profile, `model`, the `sonnet`, `opus`, and `haiku` defaults, and `fable`
 when set must use the config profile's route prefix, such as `sidekick/claude-opus-5-5`. ccenv replaces that
 prefix with NAME and verifies the resulting models against the gateway catalog.
+Without a `fable` route, the override clears any inherited
+`ANTHROPIC_DEFAULT_FABLE_MODEL`, which would still name the folder's account.
 The override covers startup, Opus/Sonnet/Haiku/Fable aliases, and the Sonnet subagent
 default. It preserves the endpoint, key file, and workspace settings. In
 `claudeai` mode, it checks NAME's local identity pin; the split config overlay

@@ -276,6 +276,9 @@ func proxyForAccount(p proxyConfig, configName, accountName string) (proxyConfig
 	for _, alias := range proxyModelAliases {
 		model, set := p.DefaultModels[alias]
 		if !set && alias == "fable" {
+			// An empty route clears any inherited Fable default, which would
+			// still point at the folder's account.
+			defaults[alias] = ""
 			continue
 		}
 		defaults[alias], err = rewrite(model)
@@ -319,7 +322,7 @@ func proxyEnvironment(env []string, configDir, credentialsDir string, p proxyCon
 		result = append(result, "ANTHROPIC_MODEL="+p.Model)
 	}
 	for _, name := range []string{"ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"} {
-		if value, exists := overrides[name]; exists {
+		if value, exists := overrides[name]; exists && value != "" {
 			result = append(result, name+"="+value)
 		}
 	}
