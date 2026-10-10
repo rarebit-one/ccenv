@@ -821,8 +821,20 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
+		// Resolve auth_profile before preflight so a gateway outage cannot
+		// reach the direct fallback with an invalid selector.
+		credentialsProfile := accountProfile
+		if proxy.AuthProfile != "" && accountName == s.Name {
+			credentialsProfile, err = requireProfile(c, proxy.AuthProfile)
+			if err != nil {
+				return err
+			}
+			if credentialsProfile.Email != accountProfile.Email || credentialsProfile.OrgID != accountProfile.OrgID {
+				return fmt.Errorf("proxy auth_profile %s must have the same pinned identity as %s", proxy.AuthProfile, accountName)
+			}
+		}
 		if err := checkProxy(proxy, key); err == nil {
-			if accountProfile.Dir != p.Dir {
+			if credentialsProfile.Dir != p.Dir {
 				if err := requireSeparateCredentialsSupport(); err != nil {
 					return err
 				}
@@ -831,7 +843,7 @@ func run(args []string) error {
 				if os.Getenv("ANTHROPIC_CUSTOM_HEADERS") != "" {
 					return errors.New("ANTHROPIC_CUSTOM_HEADERS is set; unset it before using claudeai proxy authentication")
 				}
-				auth, err := getAuth(accountProfile.Dir, accountProfile.Dir)
+				auth, err := getAuth(credentialsProfile.Dir, credentialsProfile.Dir)
 				if err != nil {
 					return err
 				}
@@ -840,8 +852,8 @@ func run(args []string) error {
 				}
 			}
 			launchConfigDir := p.Dir
-			if accountProfile.Dir != p.Dir {
-				launchConfigDir, err = splitConfigDir(p.Dir, accountProfile.Dir)
+			if credentialsProfile.Dir != p.Dir {
+				launchConfigDir, err = splitConfigDir(p.Dir, credentialsProfile.Dir)
 				if err != nil {
 					return err
 				}
@@ -851,7 +863,10 @@ func run(args []string) error {
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s with %s account routing\n", s.Name, proxy.URL, accountName)
-			return syscall.Exec(bin, append([]string{bin}, fs.Args()...), proxyEnvironment(os.Environ(), launchConfigDir, accountProfile.Dir, proxy, key))
+			if proxy.AuthMode == "claudeai" {
+				fmt.Fprintf(os.Stderr, "ccenv: native claude.ai subscription login verified for %s\n", accountProfile.Email)
+			}
+			return syscall.Exec(bin, append([]string{bin}, fs.Args()...), proxyEnvironment(os.Environ(), launchConfigDir, credentialsProfile.Dir, proxy, key))
 		} else if blocked := new(proxyAccountLimit); errors.As(err, &blocked) {
 			return fmt.Errorf("%s account (%s): %w; direct login uses the same account limit. Wait for retry or explicitly choose another account with cc --account NAME --model opus", accountName, accountProfile.Email, err)
 		} else if err := offerDirectFallback(err, accountName, accountProfile); err != nil {
