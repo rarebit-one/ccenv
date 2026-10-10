@@ -821,17 +821,19 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := checkProxy(proxy, key); err == nil {
-			credentialsProfile := accountProfile
-			if proxy.AuthProfile != "" && accountName == s.Name {
-				credentialsProfile, err = requireProfile(c, proxy.AuthProfile)
-				if err != nil {
-					return err
-				}
-				if credentialsProfile.Email != accountProfile.Email || credentialsProfile.OrgID != accountProfile.OrgID {
-					return fmt.Errorf("proxy auth_profile %s must have the same pinned identity as %s", proxy.AuthProfile, accountName)
-				}
+		// Resolve auth_profile before preflight so a gateway outage cannot
+		// reach the direct fallback with an invalid selector.
+		credentialsProfile := accountProfile
+		if proxy.AuthProfile != "" && accountName == s.Name {
+			credentialsProfile, err = requireProfile(c, proxy.AuthProfile)
+			if err != nil {
+				return err
 			}
+			if credentialsProfile.Email != accountProfile.Email || credentialsProfile.OrgID != accountProfile.OrgID {
+				return fmt.Errorf("proxy auth_profile %s must have the same pinned identity as %s", proxy.AuthProfile, accountName)
+			}
+		}
+		if err := checkProxy(proxy, key); err == nil {
 			if credentialsProfile.Dir != p.Dir {
 				if err := requireSeparateCredentialsSupport(); err != nil {
 					return err

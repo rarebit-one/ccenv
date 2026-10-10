@@ -280,6 +280,17 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 		t.Fatal(err)
 	}
 	server.Close()
+	unknownLogin := strings.Replace(sharedSelector, `"auth_profile":"work-login"`, `"auth_profile":"missing"`, 1)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(unknownLogin), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--", "-c")
+	if err == nil || !strings.Contains(output, `unknown profile "missing"`) || strings.Contains(output, "no interactive terminal") || strings.Contains(output, "DIR=") {
+		t.Fatalf("gateway outage skipped auth_profile validation: %v %s", err, output)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(selector), 0600); err != nil {
+		t.Fatal(err)
+	}
 	output, err = call("run", "--", "-c")
 	if err == nil || !strings.Contains(output, "no interactive terminal") || strings.Contains(output, "DIR=") {
 		t.Fatalf("noninteractive failure launched Claude: %v %s", err, output)
