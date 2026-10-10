@@ -62,10 +62,10 @@ The accepted direct launch follows the usual pin check and carries no proxy
 settings. Invalid configuration and unreadable key files fail without prompting.
 `--direct` skips proxy preflight and uses the same verified direct launch.
 `--account NAME` also works through a folder proxy. When NAME differs from the
-config profile, `model` and all three `default_models` must use the config
-profile's route prefix, such as `sidekick/claude-opus-5-5`. ccenv replaces that
+config profile, `model`, the `sonnet`, `opus`, and `haiku` defaults, and `fable`
+when set must use the config profile's route prefix, such as `sidekick/claude-opus-5-5`. ccenv replaces that
 prefix with NAME and verifies the resulting models against the gateway catalog.
-The override covers startup, Opus/Sonnet/Haiku aliases, and the Sonnet subagent
+The override covers startup, Opus/Sonnet/Haiku/Fable aliases, and the Sonnet subagent
 default. It preserves the endpoint, key file, and workspace settings. In
 `claudeai` mode, it checks NAME's local identity pin; the split config overlay
 also uses NAME's account cache and credential directory. Gateway-token mode
@@ -205,10 +205,12 @@ remove a file.
 
 ### Account model defaults on a shared gateway
 
-The optional `proxy.default_models` object maps `sonnet`, `opus`, and `haiku`
-to advertised model IDs, such as `sidekick/claude-sonnet-4-6`. ccenv sets the
-corresponding `ANTHROPIC_DEFAULT_*_MODEL` variables for proxy launches. When
-`sonnet` is set, `CLAUDE_CODE_SUBAGENT_MODEL` uses that value too. All configured
+The optional `proxy.default_models` object maps `sonnet`, `opus`, `haiku`, and
+`fable` to advertised model IDs, such as `sidekick/claude-sonnet-4-6`. ccenv sets
+the corresponding `ANTHROPIC_DEFAULT_*_MODEL` variables for proxy launches. When
+`sonnet` is set, `CLAUDE_CODE_SUBAGENT_MODEL` uses that value too. Set `fable` on
+a gateway that serves bare model IDs from another account: without it, Claude
+Code's `fable` alias sends the bare ID. All configured
 model IDs must appear in the preflight catalog. These defaults override inherited
 values only for the proxy process; direct fallback does not receive them.
 

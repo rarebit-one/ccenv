@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -127,6 +128,7 @@ fi
 printf 'DIR=%s\nURL=%s\nTOKEN=%s\nMODEL=%s\n' "$CLAUDE_CONFIG_DIR" "$ANTHROPIC_BASE_URL" "$ANTHROPIC_AUTH_TOKEN" "$ANTHROPIC_MODEL"
 for arg in "$@"; do printf 'ARG=%s\n' "$arg"; done
 printf 'SONNET=%s\nOPUS=%s\nHAIKU=%s\nSUBAGENT=%s\n' "$ANTHROPIC_DEFAULT_SONNET_MODEL" "$ANTHROPIC_DEFAULT_OPUS_MODEL" "$ANTHROPIC_DEFAULT_HAIKU_MODEL" "$CLAUDE_CODE_SUBAGENT_MODEL"
+printf 'FABLE=%s\n' "$ANTHROPIC_DEFAULT_FABLE_MODEL"
 printf 'HEADERS=%s\n' "$ANTHROPIC_CUSTOM_HEADERS"
 printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 `
@@ -153,7 +155,7 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 		fmt.Fprint(w, `{"data":[{"id":"claude-test"},{"id":"work/claude-test"},{"id":"personal/claude-test"}]}`)
 	}))
 	defer server.Close()
-	selector := fmt.Sprintf(`{"profile":"work","proxy":{"url":%q,"api_key_file":%q,"model":"claude-test","default_models":{"sonnet":"claude-test","opus":"claude-test","haiku":"claude-test"}}}`, server.URL, keyFile)
+	selector := fmt.Sprintf(`{"profile":"work","proxy":{"url":%q,"api_key_file":%q,"model":"claude-test","default_models":{"sonnet":"claude-test","opus":"claude-test","haiku":"claude-test","fable":"claude-test"}}}`, server.URL, keyFile)
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(selector), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +256,7 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 	}
 	t.Setenv("FAKE_EMAIL", "personal@example.test")
 	output, err = call("run", "--account", "personal", "--", "--model", "opus")
-	if err != nil || !strings.Contains(output, "MODEL=personal/claude-test\nARG=--model\nARG=opus\n") || !strings.Contains(output, "SONNET=personal/claude-test\nOPUS=personal/claude-test\nHAIKU=personal/claude-test\nSUBAGENT=personal/claude-test\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
+	if err != nil || !strings.Contains(output, "MODEL=personal/claude-test\nARG=--model\nARG=opus\n") || !strings.Contains(output, "SONNET=personal/claude-test\nOPUS=personal/claude-test\nHAIKU=personal/claude-test\nSUBAGENT=personal/claude-test\nFABLE=personal/claude-test\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
 		t.Fatalf("split native proxy account routing: %v %s", err, output)
 	}
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(nativeSelector), 0600); err != nil {
@@ -312,10 +314,34 @@ func TestProxyAccountRoutesRequireCompleteScope(t *testing.T) {
 	if err != nil || updated.Model != "personal/opus" || updated.DefaultModels["sonnet"] != "personal/sonnet" || original.DefaultModels["sonnet"] != "work/sonnet" {
 		t.Fatalf("account route rewrite mutated selector or kept old route: %#v %v", updated, err)
 	}
+	if _, set := updated.DefaultModels["fable"]; set {
+		t.Fatalf("account route rewrite invented a Fable route: %#v", updated.DefaultModels)
+	}
+	original.DefaultModels["fable"] = "work/fable"
+	updated, err = proxyForAccount(original, "work", "personal")
+	if err != nil || updated.DefaultModels["fable"] != "personal/fable" {
+		t.Fatalf("account route rewrite kept the old Fable route: %#v %v", updated.DefaultModels, err)
+	}
+	for _, model := range []string{"", "fable", "other/fable"} {
+		original.DefaultModels["fable"] = model
+		if _, err := proxyForAccount(original, "work", "personal"); err == nil {
+			t.Fatalf("accepted mismatched Fable route %q", model)
+		}
+	}
+	delete(original.DefaultModels, "fable")
 	for _, model := range []string{"", "sonnet", "other/sonnet", "work/"} {
 		original.DefaultModels["sonnet"] = model
 		if _, err := proxyForAccount(original, "work", "personal"); err == nil {
 			t.Fatalf("accepted incomplete or mismatched Sonnet route %q", model)
 		}
+	}
+}
+
+func TestProxyEnvironmentReplacesInheritedFableRoute(t *testing.T) {
+	env := []string{"ANTHROPIC_DEFAULT_FABLE_MODEL=work/fable", "KEEP=1"}
+	p := proxyConfig{URL: "https://proxy.test", DefaultModels: map[string]string{"fable": "personal/fable"}}
+	result := proxyEnvironment(env, "/config", "/config", p, "key")
+	if slices.Contains(result, "ANTHROPIC_DEFAULT_FABLE_MODEL=work/fable") || !slices.Contains(result, "ANTHROPIC_DEFAULT_FABLE_MODEL=personal/fable") || !slices.Contains(result, "KEEP=1") {
+		t.Fatalf("proxy environment kept the inherited Fable route: %v", result)
 	}
 }
