@@ -228,6 +228,13 @@ local claude.ai email and organization pin before launch, sets
 identity and organization features. An inherited `ANTHROPIC_CUSTOM_HEADERS`
 value is rejected in this mode to prevent conflicting authentication headers.
 
+`proxy.auth_profile` can name another registered profile with a valid login for
+the same pinned email and organization. The launch uses that profile's credential
+directory and an isolated account-cache overlay, while preserving the selected
+workspace settings and proxy model routes. Credentials are never copied.
+An explicit `--account` for a different account uses that account's own login
+instead. `auth_profile` is accepted only in `claudeai` mode.
+
 The default `"gateway"` mode continues to use `ANTHROPIC_AUTH_TOKEN` and needs
 no local login while the proxy is available. A native login reported by Claude
 Code does not verify a gateway's billing policy or serving account; the gateway

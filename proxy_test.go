@@ -40,6 +40,8 @@ func TestFolderProxySelection(t *testing.T) {
 		`{"profile":"work","proxy":{"url":"https://user:secret@example.test","api_key_file":"key"}}`,
 		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","timeout_seconds":-1}}`,
 		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","auth_mode":"unknown"}}`,
+		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","auth_profile":"work-login"}}`,
+		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","auth_mode":"claudeai","auth_profile":"../work"}}`,
 		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","provider":"unknown"}}`,
 		`{"profile":"work"} {"profile":"other"}`,
 		`{"profile":"unknown"}`,
@@ -222,7 +224,31 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 	if _, err := os.Stat(filepath.Join(root, "auth-check")); err != nil {
 		t.Fatal("native subscription proxy skipped the local identity check")
 	}
-	scopedSelector := strings.ReplaceAll(nativeSelector, `"claude-test"`, `"work/claude-test"`)
+	sharedConfig, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sharedConfig = bytes.Replace(sharedConfig, []byte(`"profiles":{`), []byte(fmt.Sprintf(`"profiles":{"work-login":{"dir":%q,"email":"work@example.test","org_id":"work-org"},`, personalDir)), 1)
+	if err := os.WriteFile(configFile, sharedConfig, 0600); err != nil {
+		t.Fatal(err)
+	}
+	sharedSelector := strings.Replace(nativeSelector, `"proxy":{`, `"proxy":{"auth_profile":"work-login",`, 1)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(sharedSelector), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--", "-p", "hello world")
+	if err != nil || !strings.Contains(output, "TOKEN=\nMODEL=claude-test\n") || !strings.Contains(output, "HEADERS=x-api-key: test-client-key\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
+		t.Fatalf("same-account native proxy login: %v %s", err, output)
+	}
+	wrongLogin := strings.Replace(sharedSelector, `"auth_profile":"work-login"`, `"auth_profile":"personal"`, 1)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(wrongLogin), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--")
+	if err == nil || !strings.Contains(output, "must have the same pinned identity") || strings.Contains(output, "DIR=") {
+		t.Fatalf("proxy auth profile accepted another identity: %v %s", err, output)
+	}
+	scopedSelector := strings.ReplaceAll(sharedSelector, `"claude-test"`, `"work/claude-test"`)
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(scopedSelector), 0600); err != nil {
 		t.Fatal(err)
 	}

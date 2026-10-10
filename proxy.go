@@ -25,6 +25,7 @@ type folderConfig struct {
 type proxyConfig struct {
 	Provider       string            `json:"provider,omitempty"`
 	AuthMode       string            `json:"auth_mode,omitempty"`
+	AuthProfile    string            `json:"auth_profile,omitempty"`
 	URL            string            `json:"url"`
 	APIKeyFile     string            `json:"api_key_file"`
 	Model          string            `json:"model,omitempty"`
@@ -68,6 +69,9 @@ func validateProxy(p *proxyConfig, directory string) error {
 	}
 	if p.AuthMode != "" && p.AuthMode != "gateway" && p.AuthMode != "claudeai" {
 		return errors.New("proxy auth_mode must be gateway or claudeai")
+	}
+	if p.AuthProfile != "" && (p.AuthMode != "claudeai" || !validName.MatchString(p.AuthProfile)) {
+		return errors.New("proxy auth_profile requires claudeai mode and a valid profile name")
 	}
 	u, err := url.Parse(p.URL)
 	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
