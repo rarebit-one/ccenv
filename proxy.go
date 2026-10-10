@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -21,6 +22,10 @@ type folderConfig struct {
 	Profile string       `json:"profile"`
 	Proxy   *proxyConfig `json:"proxy,omitempty"`
 }
+
+// proxyModelAliases are the Claude Code model aliases a proxy can route.
+// fable is optional; the others are required for an --account override.
+var proxyModelAliases = []string{"opus", "sonnet", "haiku", "fable"}
 
 type proxyConfig struct {
 	Provider       string            `json:"provider,omitempty"`
@@ -103,8 +108,8 @@ func validateProxy(p *proxyConfig, directory string) error {
 		return errors.New("proxy model must be a single line")
 	}
 	for alias, model := range p.DefaultModels {
-		if alias != "sonnet" && alias != "opus" && alias != "haiku" {
-			return errors.New("proxy default_models accepts only sonnet, opus and haiku")
+		if !slices.Contains(proxyModelAliases, alias) {
+			return errors.New("proxy default_models accepts only sonnet, opus, haiku and fable")
 		}
 		if strings.TrimSpace(model) == "" || strings.ContainsAny(model, "\r\n\x00") {
 			return errors.New("proxy default_models values must be nonempty model names")
@@ -220,7 +225,7 @@ func checkProxy(p proxyConfig, key string) error {
 	if p.Model != "" && !available[p.Model] {
 		return missingProxyModel(client, p, key, p.Model)
 	}
-	for _, alias := range []string{"opus", "sonnet", "haiku"} {
+	for _, alias := range proxyModelAliases {
 		if model := p.DefaultModels[alias]; model != "" && !available[model] {
 			return missingProxyModel(client, p, key, model)
 		}
@@ -267,9 +272,16 @@ func proxyForAccount(p proxyConfig, configName, accountName string) (proxyConfig
 	if err != nil {
 		return proxyConfig{}, err
 	}
-	defaults := make(map[string]string, 3)
-	for _, alias := range []string{"sonnet", "opus", "haiku"} {
-		defaults[alias], err = rewrite(p.DefaultModels[alias])
+	defaults := make(map[string]string, len(proxyModelAliases))
+	for _, alias := range proxyModelAliases {
+		model, set := p.DefaultModels[alias]
+		if !set && alias == "fable" {
+			// An empty route clears any inherited Fable default, which would
+			// still point at the folder's account.
+			defaults[alias] = ""
+			continue
+		}
+		defaults[alias], err = rewrite(model)
 		if err != nil {
 			return proxyConfig{}, err
 		}
@@ -309,8 +321,8 @@ func proxyEnvironment(env []string, configDir, credentialsDir string, p proxyCon
 	if p.Model != "" {
 		result = append(result, "ANTHROPIC_MODEL="+p.Model)
 	}
-	for _, name := range []string{"ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"} {
-		if value, exists := overrides[name]; exists {
+	for _, name := range []string{"ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"} {
+		if value, exists := overrides[name]; exists && value != "" {
 			result = append(result, name+"="+value)
 		}
 	}

@@ -160,8 +160,8 @@ request](https://github.com/anthropics/claude-code/issues/79223).
 
 In a folder configured with a proxy, `ccenv run --account family -- --model opus`
 keeps the folder's settings and selects the gateway's `family/` model routes.
-The selector's `model` and all three `default_models` must use the folder
-profile's prefix, for example `sidekick/`. ccenv replaces that prefix for this
+The selector's `model`, the `sonnet`, `opus`, and `haiku` defaults, and `fable`
+when set must use the folder profile's prefix, for example `sidekick/`. ccenv replaces that prefix for this
 launch, including the subagent default, and checks that the new routes are
 advertised. The gateway must map those aliases to the intended account.
 Gateway-token mode can use server credentials without a local login;
@@ -306,10 +306,12 @@ any later version. See [LICENSE](LICENSE).
 
 ### Account model defaults on a shared gateway
 
-The optional `proxy.default_models` object maps `sonnet`, `opus`, and `haiku`
-to advertised model IDs, such as `sidekick/claude-sonnet-4-6`. ccenv sets the
-corresponding `ANTHROPIC_DEFAULT_*_MODEL` variables for proxy launches. When
-`sonnet` is set, `CLAUDE_CODE_SUBAGENT_MODEL` uses that value too. All configured
+The optional `proxy.default_models` object maps `sonnet`, `opus`, `haiku`, and
+`fable` to advertised model IDs, such as `sidekick/claude-sonnet-4-6`. ccenv sets
+the corresponding `ANTHROPIC_DEFAULT_*_MODEL` variables for proxy launches. When
+`sonnet` is set, `CLAUDE_CODE_SUBAGENT_MODEL` uses that value too. Set `fable` on
+a gateway that serves bare model IDs from another account: without it, Claude
+Code's `fable` alias sends the bare ID. All configured
 model IDs must appear in the preflight catalog. These defaults override inherited
 values only for the proxy process; direct fallback does not receive them.
 
