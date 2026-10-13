@@ -328,3 +328,35 @@ func proxyEnvironment(env []string, configDir, credentialsDir string, p proxyCon
 	}
 	return result
 }
+
+// Claude's /model picker selects full Anthropic IDs, even when an alias has a
+// proxy-specific default. Map those selections to the routes already configured
+// and checked in the gateway catalog.
+func proxyClaudeArgs(args []string, p proxyConfig) ([]string, error) {
+	overrides := map[string]string{}
+	models := []string{p.Model}
+	for _, alias := range proxyModelAliases {
+		models = append(models, p.DefaultModels[alias])
+	}
+	for _, model := range models {
+		slash := strings.LastIndexByte(model, '/')
+		if slash < 0 || !strings.HasPrefix(model[slash+1:], "claude-") {
+			continue
+		}
+		name := model[slash+1:]
+		if previous, exists := overrides[name]; exists && previous != model {
+			return nil, fmt.Errorf("proxy models give %s conflicting routes", name)
+		}
+		overrides[name] = model
+	}
+	if len(overrides) == 0 {
+		return args, nil
+	}
+	settings, err := json.Marshal(struct {
+		ModelOverrides map[string]string `json:"modelOverrides"`
+	}{ModelOverrides: overrides})
+	if err != nil {
+		return nil, err
+	}
+	return append([]string{"--settings", string(settings)}, args...), nil
+}

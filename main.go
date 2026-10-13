@@ -862,11 +862,15 @@ func run(args []string) error {
 			if err != nil {
 				return err
 			}
+			claudeArgs, err := proxyClaudeArgs(fs.Args(), proxy)
+			if err != nil {
+				return err
+			}
 			fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s with %s account routing\n", s.Name, proxy.URL, accountName)
 			if proxy.AuthMode == "claudeai" {
 				fmt.Fprintf(os.Stderr, "ccenv: native claude.ai subscription login verified for %s\n", accountProfile.Email)
 			}
-			return syscall.Exec(bin, append([]string{bin}, fs.Args()...), proxyEnvironment(os.Environ(), launchConfigDir, credentialsProfile.Dir, proxy, key))
+			return syscall.Exec(bin, append([]string{bin}, claudeArgs...), proxyEnvironment(os.Environ(), launchConfigDir, credentialsProfile.Dir, proxy, key))
 		} else if blocked := new(proxyAccountLimit); errors.As(err, &blocked) {
 			return fmt.Errorf("%s account (%s): %w; direct login uses the same account limit. Wait for retry or explicitly choose another account with cc --account NAME --model opus", accountName, accountProfile.Email, err)
 		} else if err := offerDirectFallback(err, accountName, accountProfile); err != nil {
