@@ -316,6 +316,8 @@ a gateway that serves bare model IDs from another account: without it, Claude
 Code's `fable` alias sends the bare ID. All configured
 model IDs must appear in the preflight catalog. These defaults override inherited
 values only for the proxy process; direct fallback does not receive them.
+For prefixed model IDs, ccenv also maps full model names chosen in Claude's
+`/model` picker to the configured gateway routes.
 
 Account aliases route requests within one gateway. They prevent ordinary model
 and subagent selection from switching accounts, but are not a security boundary:

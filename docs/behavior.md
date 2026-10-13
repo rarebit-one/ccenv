@@ -217,6 +217,9 @@ a gateway that serves bare model IDs from another account: without it, Claude
 Code's `fable` alias sends the bare ID. All configured
 model IDs must appear in the preflight catalog. These defaults override inherited
 values only for the proxy process; direct fallback does not receive them.
+For prefixed model IDs, ccenv also passes Claude a `modelOverrides` setting. This
+routes full model IDs selected in the `/model` picker to the same advertised
+gateway IDs.
 
 Account aliases route requests within one gateway. They prevent ordinary model
 and subagent selection from switching accounts, but are not a security boundary:

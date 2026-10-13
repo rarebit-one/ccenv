@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +15,25 @@ import (
 	"syscall"
 	"testing"
 )
+
+func TestProxyPickerModelsUseConfiguredRoutes(t *testing.T) {
+	p := proxyConfig{Model: "sidekick/claude-opus-5-5", DefaultModels: map[string]string{
+		"opus": "sidekick/claude-opus-5-5", "fable": "sidekick/claude-fable-5-1",
+	}}
+	args, err := proxyClaudeArgs([]string{"--model", "claude-fable-5-1"}, p)
+	if err != nil || len(args) != 4 || args[0] != "--settings" || args[2] != "--model" || args[3] != "claude-fable-5-1" {
+		t.Fatalf("proxy launch arguments: %q, %v", args, err)
+	}
+	var settings struct {
+		ModelOverrides map[string]string `json:"modelOverrides"`
+	}
+	if err := json.Unmarshal([]byte(args[1]), &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings.ModelOverrides["claude-fable-5-1"] != "sidekick/claude-fable-5-1" || settings.ModelOverrides["claude-opus-5-5"] != "sidekick/claude-opus-5-5" || len(settings.ModelOverrides) != 2 {
+		t.Fatalf("wrong picker routes: %v", settings.ModelOverrides)
+	}
+}
 
 func TestFolderProxySelection(t *testing.T) {
 	root := t.TempDir()
@@ -274,7 +294,7 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 	}
 	t.Setenv("FAKE_EMAIL", "personal@example.test")
 	output, err = call("run", "--account", "personal", "--", "--model", "opus")
-	if err != nil || !strings.Contains(output, "MODEL=personal/claude-test\nARG=--model\nARG=opus\n") || !strings.Contains(output, "SONNET=personal/claude-test\nOPUS=personal/claude-test\nHAIKU=personal/claude-test\nSUBAGENT=personal/claude-test\nFABLE=personal/claude-test\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
+	if err != nil || !strings.Contains(output, "MODEL=personal/claude-test\nARG=--settings\nARG={\"modelOverrides\":{\"claude-test\":\"personal/claude-test\"}}\nARG=--model\nARG=opus\n") || !strings.Contains(output, "SONNET=personal/claude-test\nOPUS=personal/claude-test\nHAIKU=personal/claude-test\nSUBAGENT=personal/claude-test\nFABLE=personal/claude-test\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
 		t.Fatalf("split native proxy account routing: %v %s", err, output)
 	}
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(nativeSelector), 0600); err != nil {
