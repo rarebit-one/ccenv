@@ -55,12 +55,14 @@ successful catalog request does not prove a particular upstream identity,
 available quota, or successful inference.
 
 On a connection, HTTP, catalog, or model failure, ccenv opens `/dev/tty` and
-offers a direct launch with the selected account's email and organization.
+offers a direct launch with the selected account's email and organization. When
+`proxy.auth_profile` is set, the offer uses that registered same-identity login.
 Only a complete `y` or `yes` response accepts. Blank input, no, EOF, and a
 missing terminal stop the launch. Piped Claude input is never used for consent.
 The accepted direct launch follows the usual pin check and carries no proxy
 settings. Invalid configuration and unreadable key files fail without prompting.
-`--direct` skips proxy preflight and uses the same verified direct launch.
+`--direct` skips proxy preflight and uses the same verified direct launch,
+including `proxy.auth_profile` when configured.
 `--account NAME` also works through a folder proxy. When NAME differs from the
 config profile, `model`, the `sonnet`, `opus`, and `haiku` defaults, and `fable`
 when set must use the config profile's route prefix, such as `sidekick/claude-opus-5-5`. ccenv replaces that
@@ -118,7 +120,7 @@ directory seeds its overlay from `~/.claude.json`.
 2. Stop if a known API-key, OAuth-token, gateway, or cloud-provider variable is set in the caller's environment.
 3. Run `claude auth status --json` for that profile, with a ten-second timeout.
 4. Require a logged-in `claude.ai` account. Unless `--ignore-pin` was passed, require its email and organization to match the selected account profile's pin.
-5. If config and account profiles differ, prepare a private overlay in the ccenv cache. Copy the config profile's `.claude.json` preferences into it, replace `oauthAccount` with the credential profile's cached identity or remove it when missing, omit credential files, and symlink other config entries to the selected config profile. This keeps settings, plugins, memories, and history shared while writes to Claude's mutable account cache remain isolated. Set `CLAUDE_CONFIG_DIR` to that overlay and `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the selected account profile, then execute Claude Code with the supplied arguments. If the profiles match, use the config profile directly.
+5. If config and credential profiles differ, prepare a private overlay in the ccenv cache. Copy the config profile's `.claude.json` preferences into it, replace `oauthAccount` with the credential profile's cached identity or remove it when missing, omit credential files, and symlink other config entries to the selected config profile. This keeps settings, plugins, memories, and history shared while writes to Claude's mutable account cache remain isolated. Set `CLAUDE_CONFIG_DIR` to that overlay and `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the credential profile, then execute Claude Code with the supplied arguments. If the profiles match, use the config profile directly.
 
 By default, the config and account profiles are the same. `--profile NAME`
 chooses a config profile; `--account NAME` chooses which registered profile's
@@ -233,9 +235,10 @@ identity and organization features. An inherited `ANTHROPIC_CUSTOM_HEADERS`
 value is rejected in this mode to prevent conflicting authentication headers.
 
 `proxy.auth_profile` can name another registered profile with a valid login for
-the same pinned email and organization. The launch uses that profile's credential
-directory and an isolated account-cache overlay, while preserving the selected
-workspace settings and proxy model routes. Credentials are never copied.
+the same pinned email and organization. Proxy and direct launches use that
+profile's credential directory and an isolated account-cache overlay, while
+preserving the selected workspace settings. Proxy launches retain the workspace's
+model routes. Credentials are never copied.
 An explicit `--account` for a different account uses that account's own login
 instead. `auth_profile` is accepted only in `claudeai` mode.
 

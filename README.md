@@ -167,7 +167,9 @@ advertised. The gateway must map those aliases to the intended account.
 Gateway-token mode can use server credentials without a local login;
 `auth_mode: "claudeai"` also verifies the selected local subscription identity.
 If the proxy fails and you accept direct fallback, the override account's
-pinned local login is used. `--direct` explicitly chooses that local login.
+pinned local login is used. When `proxy.auth_profile` is configured for the
+selected account, fallback uses that same-identity login instead. `--direct`
+uses the same selection without contacting the proxy.
 
 For a split launch, `ccenv` creates a private config overlay under
 `$XDG_CACHE_HOME/ccenv/config-overlays` or the OS cache directory. It keeps the
@@ -335,6 +337,11 @@ The default `"gateway"` mode continues to use `ANTHROPIC_AUTH_TOKEN` and needs
 no local login while the proxy is available. A native login reported by Claude
 Code does not verify a gateway's billing policy or serving account; the gateway
 operator must independently verify upstream credentials and account routing.
+
+`proxy.auth_profile` selects a registered login with the same pinned email and
+organization as the folder profile. ccenv uses it for native proxy launches and
+direct fallback, preserving the folder profile's settings in a split config
+overlay. An explicit `--account` for another account takes precedence.
 
 See [Anthropic's gateway subscription behavior](https://code.claude.com/docs/en/gateways#subscriptions-and-gateways).
 
