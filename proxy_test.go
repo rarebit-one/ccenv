@@ -122,6 +122,10 @@ func TestCLIProxyLaunchAndExplicitDirect(t *testing.T) {
 if [ "$1" = --version ]; then printf '2.1.293\n'; exit 0; fi
 if [ "$1" = auth ]; then
   printf 'checked\n' > "$FAKE_AUTH_LOG"
+  if [ "$CLAUDE_CONFIG_DIR" = "$FAKE_UNAUTH_DIR" ]; then
+    printf '{"loggedIn":false}\n'
+    exit 1
+  fi
   printf '{"loggedIn":true,"email":"%s","orgId":"work-org","authMethod":"%s"}\n' "${FAKE_EMAIL:-work@example.test}" "${FAKE_AUTH_METHOD:-claude.ai}"
   exit 0
 fi
@@ -242,6 +246,16 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 	if err != nil || !strings.Contains(output, "TOKEN=\nMODEL=claude-test\n") || !strings.Contains(output, "HEADERS=x-api-key: test-client-key\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
 		t.Fatalf("same-account native proxy login: %v %s", err, output)
 	}
+	t.Setenv("FAKE_UNAUTH_DIR", root)
+	output, err = call("current")
+	if err != nil || !strings.Contains(output, "direct fallback account: work-login") {
+		t.Fatalf("current should name the direct credential profile: %v %s", err, output)
+	}
+	output, err = call("run", "--direct", "--", "-c")
+	if err != nil || !strings.Contains(output, "using work config with work-login credentials") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "URL=\nTOKEN=\nMODEL=\n") {
+		t.Fatalf("direct launch should use signed-in auth_profile without proxy settings: %v %s", err, output)
+	}
+	t.Setenv("FAKE_UNAUTH_DIR", "")
 	wrongLogin := strings.Replace(sharedSelector, `"auth_profile":"work-login"`, `"auth_profile":"personal"`, 1)
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(wrongLogin), 0600); err != nil {
 		t.Fatal(err)
@@ -249,6 +263,10 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 	output, err = call("run", "--")
 	if err == nil || !strings.Contains(output, "must have the same pinned identity") || strings.Contains(output, "DIR=") {
 		t.Fatalf("proxy auth profile accepted another identity: %v %s", err, output)
+	}
+	output, err = call("run", "--direct", "--")
+	if err == nil || !strings.Contains(output, "must have the same pinned identity") || strings.Contains(output, "DIR=") {
+		t.Fatalf("direct launch accepted another auth profile identity: %v %s", err, output)
 	}
 	scopedSelector := strings.ReplaceAll(sharedSelector, `"claude-test"`, `"work/claude-test"`)
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(scopedSelector), 0600); err != nil {

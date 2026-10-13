@@ -694,7 +694,11 @@ func current() error {
 	}
 	fmt.Printf("%s → %s (from %s)\n", s.Name, p.Dir, s.Source)
 	if s.Proxy != nil {
-		fmt.Printf("Proxy: %s (direct fallback account: %s)\n", s.Proxy.URL, s.Name)
+		directName := s.Name
+		if s.Proxy.AuthProfile != "" {
+			directName = s.Proxy.AuthProfile
+		}
+		fmt.Printf("Proxy: %s (direct fallback account: %s)\n", s.Proxy.URL, directName)
 	}
 	return nil
 }
@@ -809,6 +813,18 @@ func run(args []string) error {
 	if err := refuseOverrideEnv(); err != nil {
 		return err
 	}
+	credentialsName := accountName
+	credentialsProfile := accountProfile
+	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name {
+		credentialsName = s.Proxy.AuthProfile
+		credentialsProfile, err = requireProfile(c, credentialsName)
+		if err != nil {
+			return err
+		}
+		if credentialsProfile.Email != accountProfile.Email || credentialsProfile.OrgID != accountProfile.OrgID {
+			return fmt.Errorf("proxy auth_profile %s must have the same pinned identity as %s", credentialsName, accountName)
+		}
+	}
 	if s.Proxy != nil && !*direct {
 		if *ignorePin {
 			return errors.New("--ignore-pin requires --direct when a folder proxy is configured")
@@ -820,18 +836,6 @@ func run(args []string) error {
 		key, err := readProxyKey(proxy.APIKeyFile)
 		if err != nil {
 			return err
-		}
-		// Resolve auth_profile before preflight so a gateway outage cannot
-		// reach the direct fallback with an invalid selector.
-		credentialsProfile := accountProfile
-		if proxy.AuthProfile != "" && accountName == s.Name {
-			credentialsProfile, err = requireProfile(c, proxy.AuthProfile)
-			if err != nil {
-				return err
-			}
-			if credentialsProfile.Email != accountProfile.Email || credentialsProfile.OrgID != accountProfile.OrgID {
-				return fmt.Errorf("proxy auth_profile %s must have the same pinned identity as %s", proxy.AuthProfile, accountName)
-			}
 		}
 		if err := checkProxy(proxy, key); err == nil {
 			if credentialsProfile.Dir != p.Dir {
@@ -869,35 +873,35 @@ func run(args []string) error {
 			return syscall.Exec(bin, append([]string{bin}, fs.Args()...), proxyEnvironment(os.Environ(), launchConfigDir, credentialsProfile.Dir, proxy, key))
 		} else if blocked := new(proxyAccountLimit); errors.As(err, &blocked) {
 			return fmt.Errorf("%s account (%s): %w; direct login uses the same account limit. Wait for retry or explicitly choose another account with cc --account NAME --model opus", accountName, accountProfile.Email, err)
-		} else if err := offerDirectFallback(err, accountName, accountProfile); err != nil {
+		} else if err := offerDirectFallback(err, credentialsName, credentialsProfile); err != nil {
 			return err
 		}
 	}
-	if accountProfile.Dir != p.Dir {
+	if credentialsProfile.Dir != p.Dir {
 		if err := requireSeparateCredentialsSupport(); err != nil {
 			return err
 		}
 	}
-	auth, err := getAuth(accountProfile.Dir, accountProfile.Dir)
+	auth, err := getAuth(credentialsProfile.Dir, credentialsProfile.Dir)
 	if err != nil {
 		return err
 	}
 	if *ignorePin {
-		fmt.Fprintf(os.Stderr, "ccenv: pin bypassed for account %s: Claude reports %s / %s for this launch\n", accountName, auth.Email, auth.OrgID)
-	} else if auth.Email != accountProfile.Email || auth.OrgID != accountProfile.OrgID {
-		return fmt.Errorf("%s identity changed: expected %s / %s, found %s / %s", accountName, accountProfile.Email, accountProfile.OrgID, auth.Email, auth.OrgID)
+		fmt.Fprintf(os.Stderr, "ccenv: pin bypassed for account %s: Claude reports %s / %s for this launch\n", credentialsName, auth.Email, auth.OrgID)
+	} else if auth.Email != credentialsProfile.Email || auth.OrgID != credentialsProfile.OrgID {
+		return fmt.Errorf("%s identity changed: expected %s / %s, found %s / %s", credentialsName, credentialsProfile.Email, credentialsProfile.OrgID, auth.Email, auth.OrgID)
 	}
 	launchConfigDir := p.Dir
-	if accountProfile.Dir != p.Dir {
-		launchConfigDir, err = splitConfigDir(p.Dir, accountProfile.Dir)
+	if credentialsProfile.Dir != p.Dir {
+		launchConfigDir, err = splitConfigDir(p.Dir, credentialsProfile.Dir)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "ccenv: using %s config with %s credentials; account cache is isolated for this split\n", s.Name, accountName)
+		fmt.Fprintf(os.Stderr, "ccenv: using %s config with %s credentials; account cache is isolated for this split\n", s.Name, credentialsName)
 	}
 	bin, err := claudeBinary()
 	if err != nil {
 		return err
 	}
-	return syscall.Exec(bin, append([]string{bin}, fs.Args()...), withClaudeDirs(os.Environ(), launchConfigDir, accountProfile.Dir))
+	return syscall.Exec(bin, append([]string{bin}, fs.Args()...), withClaudeDirs(os.Environ(), launchConfigDir, credentialsProfile.Dir))
 }
