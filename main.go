@@ -126,6 +126,11 @@ func dispatch(args []string) error {
 			return errors.New("usage: ccenv refresh <name>")
 		}
 		return refresh(args[1])
+	case "login":
+		if len(args) != 2 {
+			return errors.New("usage: ccenv login <name>")
+		}
+		return login(args[1])
 	case "default":
 		if len(args) != 2 {
 			return errors.New("usage: ccenv default <name>")
@@ -175,6 +180,7 @@ func usage() {
 
   ccenv add <name> <existing-config-dir>  Register and pin a logged-in profile
   ccenv refresh <name>                    Pin the profile's current login after re-authentication
+  ccenv login <name>                      Sign a registered profile in, in its own config and credential store
   ccenv default <name>                    Set the global fallback
   ccenv local <name> [--proxy-url URL --api-key-file FILE] [--model MODEL]
                                            Write folder settings in .ccenv
@@ -566,6 +572,47 @@ func refresh(name string) error {
 		return err
 	}
 	fmt.Printf("Refreshed %s: %s, org %s\n", name, p.Email, p.OrgID)
+	return nil
+}
+
+// login runs `claude auth login` for a registered profile with that profile's
+// config and credential directories, exactly as a launch selects them. Setting
+// only CLAUDE_CONFIG_DIR is not enough: without CLAUDE_SECURESTORAGE_CONFIG_DIR
+// Claude Code can store the new login where another profile reads it. The
+// browser decides which account signs in, so the result is checked against the
+// profile's pin, and a different account is reported rather than accepted;
+// `ccenv refresh` is the deliberate way to pin a new identity.
+func login(name string) error {
+	if err := refuseOverrideEnv(); err != nil {
+		return err
+	}
+	c, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	p, err := requireProfile(c, name)
+	if err != nil {
+		return err
+	}
+	bin, err := claudeBinary()
+	if err != nil {
+		return fmt.Errorf("find Claude Code: %w", err)
+	}
+	cmd := exec.Command(bin, "auth", "login")
+	cmd.Env = withClaudeDirs(os.Environ(), p.Dir, p.Dir)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("claude auth login for %s: %w", name, err)
+	}
+	s, err := getAuth(p.Dir, p.Dir)
+	if err != nil {
+		return err
+	}
+	if p.Email != "" && (s.Email != p.Email || s.OrgID != p.OrgID) {
+		return fmt.Errorf("%s signed in as %s / %s, but it is pinned to %s / %s; sign the browser into the pinned account and run `ccenv login %s` again, or run `ccenv refresh %s` to pin the new identity on purpose",
+			name, s.Email, s.OrgID, p.Email, p.OrgID, name, name)
+	}
+	fmt.Printf("Logged in %s: %s, org %s\n", name, s.Email, s.OrgID)
 	return nil
 }
 
