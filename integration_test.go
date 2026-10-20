@@ -279,3 +279,84 @@ func testCLIEnv(configFile, claudeBinary string) []string {
 	}
 	return append(env, "CCENV_CONFIG="+configFile, "CCENV_CLAUDE_BIN="+claudeBinary, "CLAUDE_CONFIG_DIR=/wrong-inherited-profile", "XDG_CACHE_HOME="+filepath.Join(filepath.Dir(filepath.Dir(configFile)), "cache"))
 }
+
+// ccenv login runs `claude auth login` in the profile's own config and
+// credential directories, then accepts only the pinned account.
+func TestLoginCommand(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "ccenv")
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", bin, ".")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build ccenv: %v\n%s", err, output)
+	}
+
+	// `auth login` signs in as FAKE_LOGIN_EMAIL/FAKE_LOGIN_ORG (the browser's
+	// account), writing the status where this config dir reads it, and records
+	// the directories it was given.
+	fakeClaude := filepath.Join(root, "fake-claude")
+	script := `#!/bin/sh
+if [ "$1" = auth ] && [ "$2" = status ] && [ "$3" = --json ]; then
+  cat "$CLAUDE_CONFIG_DIR/status.json"
+  exit $?
+fi
+if [ "$1" = auth ] && [ "$2" = login ]; then
+  printf '{"loggedIn":true,"authMethod":"claude.ai","email":"%s","orgId":"%s"}' "$FAKE_LOGIN_EMAIL" "$FAKE_LOGIN_ORG" > "$CLAUDE_CONFIG_DIR/status.json"
+  printf 'LOGIN DIR=%s CREDENTIALS=%s\n' "$CLAUDE_CONFIG_DIR" "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
+  exit 0
+fi
+exit 1
+`
+	if err := os.WriteFile(fakeClaude, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	work := filepath.Join(root, "work-config")
+	if err := os.Mkdir(work, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeStatus(t, work, "work@example.test", "work-org")
+	configFile := filepath.Join(root, "config", "config.json")
+	base := testCLIEnv(configFile, fakeClaude)
+	cmd := exec.Command(bin, "add", "work", work)
+	cmd.Env = base
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ccenv add: %v\n%s", err, output)
+	}
+
+	login := func(email, org string) (string, error) {
+		c := exec.Command(bin, "login", "work")
+		c.Dir = root
+		c.Env = append(append([]string{}, base...), "FAKE_LOGIN_EMAIL="+email, "FAKE_LOGIN_ORG="+org)
+		output, err := c.CombinedOutput()
+		return string(output), err
+	}
+
+	out, err := login("work@example.test", "work-org")
+	if err != nil {
+		t.Fatalf("login as the pinned account: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "LOGIN DIR="+work+" CREDENTIALS="+work) {
+		t.Fatalf("login did not use the profile's config and credential dirs (not the inherited one):\n%s", out)
+	}
+	if !strings.Contains(out, "Logged in work: work@example.test, org work-org") {
+		t.Fatalf("missing confirmation:\n%s", out)
+	}
+
+	out, err = login("someone@example.test", "other-org")
+	if err == nil {
+		t.Fatalf("login as another account was accepted:\n%s", out)
+	}
+	if !strings.Contains(out, "pinned to work@example.test / work-org") {
+		t.Fatalf("mismatch not explained:\n%s", out)
+	}
+
+	c := exec.Command(bin, "login")
+	c.Env = base
+	if out, err := c.CombinedOutput(); err == nil || !strings.Contains(string(out), "usage: ccenv login <name>") {
+		t.Fatalf("missing name not refused:\n%s", out)
+	}
+	c = exec.Command(bin, "login", "nobody")
+	c.Env = base
+	if out, err := c.CombinedOutput(); err == nil || !strings.Contains(string(out), "unknown profile") {
+		t.Fatalf("unknown profile not refused:\n%s", out)
+	}
+}

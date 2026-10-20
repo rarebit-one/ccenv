@@ -123,7 +123,7 @@ ccenv default personal
 ccenv check
 ```
 
-`add` records the account's current email and organization. Check its output before binding projects: if a directory is logged into the wrong account, sign in correctly using `CLAUDE_CONFIG_DIR=<directory> claude auth login`, then run `ccenv refresh <name>` to pin the corrected login. `ccenv check` reports profile identity changes and flags profiles that currently point to the same account. Duplicate accounts are reported but do not make `check` fail, since several profile names may intentionally use one login.
+`add` records the account's current email and organization. Check its output before binding projects. To sign a registered profile in (for example after its login expires), run `ccenv login <name>`: it runs `claude auth login` with the profile's own config and credential directories, then accepts the result only if it is the pinned account. Setting `CLAUDE_CONFIG_DIR` by hand is not enough, because without `CLAUDE_SECURESTORAGE_CONFIG_DIR` the new login can land where another profile reads it. If the profile should now belong to a different account, sign in and run `ccenv refresh <name>` to pin it on purpose. `ccenv check` reports profile identity changes and flags profiles that currently point to the same account. Duplicate accounts are reported but do not make `check` fail, since several profile names may intentionally use one login.
 
 In a project, run `ccenv local work` to write a one-line `.ccenv` file:
 

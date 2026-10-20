@@ -86,7 +86,7 @@ cannot switch a running session if the proxy fails later.
 
 ## Profile registration
 
-`ccenv add NAME DIR` requires an existing directory and a logged-in `claude.ai` account. It runs `claude auth status --json` with `CLAUDE_CONFIG_DIR=DIR` and records the reported email and organization ID. The original directory stays in place. `ccenv refresh NAME` records a new identity after an intentional login change. Claude Code documents [`CLAUDE_CONFIG_DIR`](https://code.claude.com/docs/en/env-vars) for running multiple accounts side by side.
+`ccenv add NAME DIR` requires an existing directory and a logged-in `claude.ai` account. It runs `claude auth status --json` with `CLAUDE_CONFIG_DIR=DIR` and records the reported email and organization ID. The original directory stays in place. `ccenv refresh NAME` records a new identity after an intentional login change. `ccenv login NAME` signs NAME in: it runs `claude auth login` with `CLAUDE_CONFIG_DIR` and `CLAUDE_SECURESTORAGE_CONFIG_DIR` both set to the profile directory, as a launch selects them, then checks `claude auth status --json` against the pin and fails, without changing it, if a different account signed in. Claude Code documents [`CLAUDE_CONFIG_DIR`](https://code.claude.com/docs/en/env-vars) for running multiple accounts side by side.
 
 The generated user config is JSON at `~/.config/ccenv/config.json` on Linux, or under the directory returned by the OS user-config lookup. `XDG_CONFIG_HOME` affects that default path. `CCENV_CONFIG` can point to another file. For example:
 
