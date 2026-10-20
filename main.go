@@ -344,6 +344,32 @@ func withClaudeDirs(env []string, configDir, credentialsDir string) []string {
 	return append(result, "CLAUDE_CONFIG_DIR="+configDir, "CLAUDE_SECURESTORAGE_CONFIG_DIR="+credentialsDir)
 }
 
+// overlayRuntimeCaches are entries Claude creates in the overlay itself when
+// the shared config directory has no entry of that name yet. Once the shared
+// directory gains the entry, the overlay copy is a stale cache: it is moved
+// aside so the shared entry can be linked in its place.
+var overlayRuntimeCaches = map[string]bool{
+	".last-cleanup":             true,
+	"mcp-needs-auth-cache.json": true,
+	"sessions":                  true,
+	"state":                     true,
+}
+
+// displaceOverlayEntry moves a stale overlay entry into a dated directory
+// beside the overlays rather than deleting it.
+func displaceOverlayEntry(cacheDir, overlay, name string) error {
+	dir := filepath.Join(cacheDir, "ccenv", "displaced", filepath.Base(overlay), time.Now().UTC().Format("20060102T150405.000000000Z"))
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("create displaced overlay directory: %w", err)
+	}
+	dest := filepath.Join(dir, name)
+	if err := os.Rename(filepath.Join(overlay, name), dest); err != nil {
+		return fmt.Errorf("move stale overlay entry %s aside: %w", name, err)
+	}
+	fmt.Fprintf(os.Stderr, "ccenv: moved stale overlay entry %s to %s\n", name, dest)
+	return nil
+}
+
 // splitConfigDir creates a per-config/per-account view of the config directory.
 // Claude writes the active account identity cache to .claude.json even when its
 // credentials come from a separate store. Keep that mutable cache private to
@@ -382,9 +408,13 @@ func splitConfigDir(configDir, credentialsDir string) (string, error) {
 		dest := filepath.Join(overlay, name)
 		if info, err := os.Lstat(dest); err == nil {
 			if info.Mode()&os.ModeSymlink == 0 {
-				return "", fmt.Errorf("split config overlay contains unexpected file %s", dest)
-			}
-			if err := os.Remove(dest); err != nil {
+				if !overlayRuntimeCaches[name] {
+					return "", fmt.Errorf("split config overlay contains unexpected file %s; move it aside or merge it into %s", dest, source)
+				}
+				if err := displaceOverlayEntry(cacheDir, overlay, name); err != nil {
+					return "", err
+				}
+			} else if err := os.Remove(dest); err != nil {
 				return "", fmt.Errorf("replace split config link %s: %w", dest, err)
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {

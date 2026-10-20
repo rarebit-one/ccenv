@@ -76,3 +76,89 @@ func TestSplitCacheUsesCredentialAccountIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestSplitConfigDirDisplacesStaleRuntimeCaches(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(home, ".claude-work")
+	account := filepath.Join(home, ".claude-personal")
+	for _, dir := range []string{filepath.Join(config, "state"), account} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	overlay, err := splitConfigDir(config, account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Claude wrote these into the overlay before the shared directory had them.
+	if err := os.Remove(filepath.Join(overlay, "state")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(overlay, "state"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(overlay, "state", "verdicts.json"), []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(overlay, ".last-cleanup"), []byte("1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(config, ".last-cleanup"), []byte("2"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := splitConfigDir(config, account); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"state", ".last-cleanup"} {
+		target, err := os.Readlink(filepath.Join(overlay, name))
+		if err != nil || target != filepath.Join(config, name) {
+			t.Fatalf("%s not linked to the shared entry: %q, %v", name, target, err)
+		}
+	}
+	moved, err := filepath.Glob(filepath.Join(cache, "ccenv", "displaced", filepath.Base(overlay), "*", "state", "verdicts.json"))
+	if err != nil || len(moved) != 1 {
+		t.Fatalf("stale state was not kept aside: %v, %v", moved, err)
+	}
+	if data, err := os.ReadFile(moved[0]); err != nil || string(data) != "old" {
+		t.Fatalf("displaced state changed: %q, %v", data, err)
+	}
+}
+
+func TestSplitConfigDirRefusesUnknownOverlayFiles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	config := filepath.Join(home, ".claude-work")
+	account := filepath.Join(home, ".claude-personal")
+	for _, dir := range []string{config, account} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(config, "settings.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	overlay, err := splitConfigDir(config, account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(overlay, "settings.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(overlay, "settings.json"), []byte(`{"local":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := splitConfigDir(config, account); err == nil {
+		t.Fatal("split replaced an unknown overlay file")
+	}
+	if data, err := os.ReadFile(filepath.Join(overlay, "settings.json")); err != nil || string(data) != `{"local":true}` {
+		t.Fatalf("unknown overlay file changed: %q, %v", data, err)
+	}
+}
