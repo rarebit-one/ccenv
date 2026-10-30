@@ -83,6 +83,15 @@ while keeping the `profile` config directory. An explicit `--account` still
 wins, and `--profile` ignores the folder default. NAME must be a registered
 profile, or selection stops. `proxy.auth_profile` applies only when the account
 is the config profile itself. `ccenv current` names the folder account.
+`--proxy-route NAME` uses the same complete model-prefix rewrite without a
+registered local account. It switches only this launch to gateway-token mode,
+even when the folder selector uses `claudeai`, and never checks a local login.
+It requires a folder proxy, a valid route name, and catalog entries for every
+rewritten model. It cannot be combined with `--account`, `--direct`, or
+`--ignore-pin`. On proxy failure or quota limits it stops without offering
+direct fallback. The gateway must bind NAME exclusively to the intended
+upstream credential; ccenv cannot verify that binding from the model catalog.
+It ignores the folder's default `account` for this proxy-only launch.
 `--ignore-pin` requires `--direct` in a proxy-configured folder.
 Caller credential and gateway environment overrides remain prohibited in both
 modes. Proxy settings do not apply to Claude Desktop.

@@ -176,7 +176,7 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 			http.Error(w, "unauthorized", 401)
 			return
 		}
-		fmt.Fprint(w, `{"data":[{"id":"claude-test"},{"id":"work/claude-test"},{"id":"personal/claude-test"}]}`)
+		fmt.Fprint(w, `{"data":[{"id":"claude-test"},{"id":"work/claude-test"},{"id":"personal/claude-test"},{"id":"ryan/claude-test"}]}`)
 	}))
 	defer server.Close()
 	selector := fmt.Sprintf(`{"profile":"work","proxy":{"url":%q,"api_key_file":%q,"model":"claude-test","default_models":{"sonnet":"claude-test","opus":"claude-test","haiku":"claude-test","fable":"claude-test"}}}`, server.URL, keyFile)
@@ -289,6 +289,30 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 		t.Fatalf("direct launch accepted another auth profile identity: %v %s", err, output)
 	}
 	scopedSelector := strings.ReplaceAll(sharedSelector, `"claude-test"`, `"work/claude-test"`)
+	routeSelector := strings.Replace(scopedSelector, `"profile":"work"`, `"profile":"work","account":"personal"`, 1)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(routeSelector), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "auth-check")); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--proxy-route", "ryan", "--", "--model", "opus")
+	if err != nil || !strings.Contains(output, "with ryan gateway route") ||
+		!strings.Contains(output, "TOKEN=test-client-key\nMODEL=ryan/claude-test\n") ||
+		!strings.Contains(output, "SONNET=ryan/claude-test\nOPUS=ryan/claude-test\nHAIKU=ryan/claude-test\nSUBAGENT=ryan/claude-test\nFABLE=ryan/claude-test\n") ||
+		!strings.Contains(output, `"modelOverrides":{"claude-test":"ryan/claude-test"}`) ||
+		!strings.Contains(output, "HEADERS=\n") {
+		t.Fatalf("proxy-only route must cover all models without a local login: %v %s", err, output)
+	}
+	if _, err := os.Stat(filepath.Join(root, "auth-check")); !os.IsNotExist(err) {
+		t.Fatal("proxy-only route consulted the local login")
+	}
+	for _, args := range [][]string{{"--proxy-route", "missing", "--"}, {"--proxy-route", "ryan", "--account", "personal", "--"}, {"--proxy-route", "ryan", "--direct", "--"}} {
+		output, err = call(append([]string{"run"}, args...)...)
+		if err == nil || strings.Contains(output, "DIR=") || strings.Contains(output, "Launch directly") {
+			t.Fatalf("invalid or unavailable proxy-only route launched Claude: %q %v %s", args, err, output)
+		}
+	}
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(scopedSelector), 0600); err != nil {
 		t.Fatal(err)
 	}

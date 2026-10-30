@@ -93,9 +93,9 @@ func dispatch(args []string) error {
   local -a ccenv_args=()
   while (($#)); do
     case "${1-}" in
-      --profile|--account)
+      --profile|--account|--proxy-route)
         if (($# < 2)); then
-          printf 'usage: cc [--profile <name>] [--account <name>] [--ignore-pin] [--direct] [--] [CLAUDE_ARGS...]\n' >&2
+          printf 'usage: cc [--profile <name>] [--account <name>] [--proxy-route <name>] [--ignore-pin] [--direct] [--] [CLAUDE_ARGS...]\n' >&2
           return 2
         fi
         ccenv_args+=("$1" "$2")
@@ -189,7 +189,7 @@ func usage() {
   ccenv list [--json]                     List registered profiles
   ccenv discover                          Find unregistered Claude config directories
   ccenv check                             Verify logins and flag duplicate accounts
-  ccenv run [--profile <name>] [--account <name>] [--ignore-pin] [--direct] -- [args]
+  ccenv run [--profile <name>] [--account <name>] [--proxy-route <name>] [--ignore-pin] [--direct] -- [args]
                                            Launch Claude Code
   ccenv desktop [--profile <name>] [-- args]
                                            Launch Claude Desktop with the profile's own app data
@@ -877,10 +877,19 @@ func run(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	name := fs.String("profile", "", "profile override")
 	account := fs.String("account", "", "registered account profile whose credentials to use")
+	proxyRoute := fs.String("proxy-route", "", "gateway-only model route for this launch")
 	ignorePin := fs.Bool("ignore-pin", false, "bypass the saved account identity for this launch")
 	direct := fs.Bool("direct", false, "skip the folder proxy and use the pinned direct login")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *proxyRoute != "" {
+		if !validName.MatchString(*proxyRoute) {
+			return fmt.Errorf("invalid proxy route %q", *proxyRoute)
+		}
+		if *account != "" || *direct || *ignorePin {
+			return errors.New("--proxy-route cannot be combined with --account, --direct, or --ignore-pin")
+		}
 	}
 	c, err := loadConfig()
 	if err != nil {
@@ -890,8 +899,13 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	if *proxyRoute != "" && s.Proxy == nil {
+		return errors.New("--proxy-route requires a folder proxy")
+	}
 	accountName := *account
-	if accountName == "" {
+	if *proxyRoute != "" {
+		accountName = s.Name
+	} else if accountName == "" {
 		accountName = s.Account
 	}
 	if accountName == "" {
@@ -906,7 +920,7 @@ func run(args []string) error {
 	}
 	credentialsName := accountName
 	credentialsProfile := accountProfile
-	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name {
+	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name && *proxyRoute == "" {
 		credentialsName = s.Proxy.AuthProfile
 		credentialsProfile, err = requireProfile(c, credentialsName)
 		if err != nil {
@@ -920,9 +934,17 @@ func run(args []string) error {
 		if *ignorePin {
 			return errors.New("--ignore-pin requires --direct when a folder proxy is configured")
 		}
-		proxy, err := proxyForAccount(*s.Proxy, s.Name, accountName)
+		routeName := accountName
+		if *proxyRoute != "" {
+			routeName = *proxyRoute
+		}
+		proxy, err := proxyForAccount(*s.Proxy, s.Name, routeName)
 		if err != nil {
 			return err
+		}
+		if *proxyRoute != "" {
+			proxy.AuthMode = "gateway"
+			proxy.AuthProfile = ""
 		}
 		key, err := readProxyKey(proxy.APIKeyFile)
 		if err != nil {
@@ -961,11 +983,17 @@ func run(args []string) error {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s with %s account routing\n", s.Name, proxy.URL, accountName)
+			if *proxyRoute != "" {
+				fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s with %s gateway route\n", s.Name, proxy.URL, routeName)
+			} else {
+				fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s with %s account routing\n", s.Name, proxy.URL, accountName)
+			}
 			if proxy.AuthMode == "claudeai" {
 				fmt.Fprintf(os.Stderr, "ccenv: native claude.ai subscription login verified for %s\n", accountProfile.Email)
 			}
 			return syscall.Exec(bin, append([]string{bin}, claudeArgs...), proxyEnvironment(os.Environ(), launchConfigDir, credentialsProfile.Dir, proxy, key))
+		} else if *proxyRoute != "" {
+			return fmt.Errorf("proxy route %s unavailable: %w", routeName, err)
 		} else if blocked := new(proxyAccountLimit); errors.As(err, &blocked) {
 			return fmt.Errorf("%s account (%s): %w; direct login uses the same account limit. Wait for retry or explicitly choose another account with cc --account NAME --model opus", accountName, accountProfile.Email, err)
 		} else if err := offerDirectFallback(err, credentialsName, credentialsProfile); err != nil {
