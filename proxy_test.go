@@ -289,7 +289,8 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 		t.Fatalf("direct launch accepted another auth profile identity: %v %s", err, output)
 	}
 	scopedSelector := strings.ReplaceAll(sharedSelector, `"claude-test"`, `"work/claude-test"`)
-	routeSelector := strings.Replace(scopedSelector, `"profile":"work"`, `"profile":"work","account":"personal"`, 1)
+	gatewayScopedSelector := strings.ReplaceAll(selector, `"claude-test"`, `"work/claude-test"`)
+	routeSelector := strings.Replace(gatewayScopedSelector, `"profile":"work"`, `"profile":"work","account":"personal"`, 1)
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(routeSelector), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -315,6 +316,10 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 	}
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(scopedSelector), 0600); err != nil {
 		t.Fatal(err)
+	}
+	output, err = call("run", "--proxy-route", "ryan", "--")
+	if err == nil || !strings.Contains(output, "requires gateway-token mode") || strings.Contains(output, "DIR=") {
+		t.Fatalf("subscription proxy silently switched to gateway-token mode: %v %s", err, output)
 	}
 	t.Setenv("FAKE_EMAIL", "personal@example.test")
 	output, err = call("run", "--account", "personal", "--", "--model", "opus")

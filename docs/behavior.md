@@ -84,8 +84,9 @@ wins, and `--profile` ignores the folder default. NAME must be a registered
 profile, or selection stops. `proxy.auth_profile` applies only when the account
 is the config profile itself. `ccenv current` names the folder account.
 `--proxy-route NAME` uses the same complete model-prefix rewrite without a
-registered local account. It switches only this launch to gateway-token mode,
-even when the folder selector uses `claudeai`, and never checks a local login.
+registered local account. It requires gateway-token mode and never checks a
+local login. A folder using `claudeai` mode refuses this flag so a subscription
+session cannot silently switch to gateway-token authentication.
 It requires a folder proxy, a valid route name, and catalog entries for every
 rewritten model. It cannot be combined with `--account`, `--direct`, or
 `--ignore-pin`. On proxy failure or quota limits it stops without offering
