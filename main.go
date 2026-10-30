@@ -902,6 +902,9 @@ func run(args []string) error {
 	if *proxyRoute != "" && s.Proxy == nil {
 		return errors.New("--proxy-route requires a folder proxy")
 	}
+	if *proxyRoute != "" && s.Proxy.AuthMode == "claudeai" {
+		return errors.New("--proxy-route requires gateway-token mode; this folder uses a claude.ai subscription login, so register that account locally and use --account instead")
+	}
 	accountName := *account
 	if *proxyRoute != "" {
 		accountName = s.Name
@@ -941,10 +944,6 @@ func run(args []string) error {
 		proxy, err := proxyForAccount(*s.Proxy, s.Name, routeName)
 		if err != nil {
 			return err
-		}
-		if *proxyRoute != "" {
-			proxy.AuthMode = "gateway"
-			proxy.AuthProfile = ""
 		}
 		key, err := readProxyKey(proxy.APIKeyFile)
 		if err != nil {

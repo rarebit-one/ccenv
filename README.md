@@ -168,11 +168,12 @@ launch, including the subagent default, and checks that the new routes are
 advertised. The gateway must map those aliases to the intended account.
 Gateway-token mode can use server credentials without a local login;
 `auth_mode: "claudeai"` also verifies the selected local subscription identity.
-For a gateway route without a local ccenv login, use
-`ccenv run --proxy-route sidekick-ryan --`. This one launch replaces the folder's
+For a gateway-token folder, use `ccenv run --proxy-route NAME --` to select a
+route without a local ccenv login. This one launch replaces the folder's
 route prefix in the startup model, model aliases, and Sonnet subagent default,
 then uses the gateway client token without checking a local Claude login. It
-works even when the folder normally uses `auth_mode: "claudeai"`. The route must
+is refused when the folder uses `auth_mode: "claudeai"`, because gateway-token
+authentication turns off Claude Code's subscription login. The route must
 be advertised by the proxy and its models must use the folder profile's prefix.
 It cannot be combined with `--account`, `--direct`, or `--ignore-pin`. If the
 proxy is unavailable, ccenv stops rather than falling back to a different
