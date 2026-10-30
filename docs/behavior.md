@@ -77,6 +77,12 @@ still does not check the local login. Direct fallback uses NAME's pinned login.
 Missing or unscoped model settings stop an account override without prompting.
 The gateway must provide account-scoped aliases matching the profile names;
 ccenv cannot establish their upstream identity from the catalog.
+A JSON `.ccenv` can set a top-level `"account": "NAME"` to make that override
+the folder's default, so every launch behaves as if it passed `--account NAME`
+while keeping the `profile` config directory. An explicit `--account` still
+wins, and `--profile` ignores the folder default. NAME must be a registered
+profile, or selection stops. `proxy.auth_profile` applies only when the account
+is the config profile itself. `ccenv current` names the folder account.
 `--ignore-pin` requires `--direct` in a proxy-configured folder.
 Caller credential and gateway environment overrides remain prohibited in both
 modes. Proxy settings do not apply to Claude Desktop.

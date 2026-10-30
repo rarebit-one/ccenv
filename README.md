@@ -153,6 +153,8 @@ example, `ccenv run --profile sidekick --account rarebit --` (or `cc --account
 rarebit` after loading the Bash function) uses Sidekick settings, memories,
 plugins, and history with credentials from the Rarebit profile. Direct and
 `claudeai` proxy launches check Rarebit's saved identity pin before launch.
+To make that the folder's default, add `"account": "rarebit"` next to
+`"profile"` in a JSON `.ccenv`; an explicit `--account` still overrides it.
 This requires Claude Code
 2.1.215 or newer and uses its currently undocumented
 `CLAUDE_SECURESTORAGE_CONFIG_DIR` feature. See the [upstream documentation

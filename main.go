@@ -40,9 +40,10 @@ type authStatus struct {
 }
 
 type selection struct {
-	Name   string
-	Source string
-	Proxy  *proxyConfig
+	Name    string
+	Source  string
+	Account string
+	Proxy   *proxyConfig
 }
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -728,7 +729,12 @@ func selectProfile(c config, cwd, override string) (selection, error) {
 			if _, err := requireProfile(c, folder.Profile); err != nil {
 				return selection{}, fmt.Errorf("%s: %w", path, err)
 			}
-			return selection{Name: folder.Profile, Source: path, Proxy: folder.Proxy}, nil
+			if folder.Account != "" {
+				if _, err := requireProfile(c, folder.Account); err != nil {
+					return selection{}, fmt.Errorf("%s: account: %w", path, err)
+				}
+			}
+			return selection{Name: folder.Profile, Source: path, Account: folder.Account, Proxy: folder.Proxy}, nil
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return selection{}, err
 		}
@@ -770,9 +776,14 @@ func current() error {
 		return err
 	}
 	fmt.Printf("%s → %s (from %s)\n", s.Name, p.Dir, s.Source)
+	if s.Account != "" {
+		fmt.Printf("Account: %s (folder default)\n", s.Account)
+	}
 	if s.Proxy != nil {
 		directName := s.Name
-		if s.Proxy.AuthProfile != "" {
+		if s.Account != "" && s.Account != s.Name {
+			directName = s.Account
+		} else if s.Proxy.AuthProfile != "" {
 			directName = s.Proxy.AuthProfile
 		}
 		fmt.Printf("Proxy: %s (direct fallback account: %s)\n", s.Proxy.URL, directName)
@@ -880,6 +891,9 @@ func run(args []string) error {
 		return err
 	}
 	accountName := *account
+	if accountName == "" {
+		accountName = s.Account
+	}
 	if accountName == "" {
 		accountName = s.Name
 	}
