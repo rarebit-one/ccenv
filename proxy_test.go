@@ -297,6 +297,32 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 	if err != nil || !strings.Contains(output, "MODEL=personal/claude-test\nARG=--settings\nARG={\"modelOverrides\":{\"claude-test\":\"personal/claude-test\"}}\nARG=--model\nARG=opus\n") || !strings.Contains(output, "SONNET=personal/claude-test\nOPUS=personal/claude-test\nHAIKU=personal/claude-test\nSUBAGENT=personal/claude-test\nFABLE=personal/claude-test\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
 		t.Fatalf("split native proxy account routing: %v %s", err, output)
 	}
+	folderAccount := strings.Replace(scopedSelector, `"profile":"work",`, `"profile":"work","account":"personal",`, 1)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(folderAccount), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--", "--model", "opus")
+	if err != nil || !strings.Contains(output, "with personal account routing") || !strings.Contains(output, "MODEL=personal/claude-test\n") || !strings.Contains(output, "SUBAGENT=personal/claude-test\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") {
+		t.Fatalf("folder default account should route like --account: %v %s", err, output)
+	}
+	output, err = call("current")
+	if err != nil || !strings.Contains(output, "Account: personal (folder default)") || !strings.Contains(output, "direct fallback account: personal") {
+		t.Fatalf("current should name the folder default account: %v %s", err, output)
+	}
+	t.Setenv("FAKE_EMAIL", "work@example.test")
+	output, err = call("run", "--account", "work", "--")
+	if err != nil || !strings.Contains(output, "with work account routing") || !strings.Contains(output, "MODEL=work/claude-test\n") {
+		t.Fatalf("explicit --account should beat the folder default: %v %s", err, output)
+	}
+	missingAccount := strings.Replace(folderAccount, `"account":"personal"`, `"account":"missing"`, 1)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(missingAccount), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--")
+	if err == nil || !strings.Contains(output, `account: unknown profile "missing"`) || strings.Contains(output, "DIR=") {
+		t.Fatalf("unknown folder account should stop launch: %v %s", err, output)
+	}
+	t.Setenv("FAKE_EMAIL", "personal@example.test")
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(nativeSelector), 0600); err != nil {
 		t.Fatal(err)
 	}

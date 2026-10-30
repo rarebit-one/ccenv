@@ -19,7 +19,10 @@ import (
 )
 
 type folderConfig struct {
-	Profile string       `json:"profile"`
+	Profile string `json:"profile"`
+	// Account is the registered profile whose login this folder uses by
+	// default, as if every launch passed --account. An explicit --account wins.
+	Account string       `json:"account,omitempty"`
 	Proxy   *proxyConfig `json:"proxy,omitempty"`
 }
 
@@ -59,6 +62,9 @@ func parseDotfile(path string) (folderConfig, error) {
 	}
 	if !validName.MatchString(folder.Profile) {
 		return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: expected a profile name", path)
+	}
+	if folder.Account != "" && !validName.MatchString(folder.Account) {
+		return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: account must be a profile name", path)
 	}
 	if folder.Proxy != nil {
 		if err := validateProxy(folder.Proxy, filepath.Dir(path)); err != nil {
