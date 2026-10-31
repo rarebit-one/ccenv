@@ -28,8 +28,9 @@ type profile struct {
 }
 
 type config struct {
-	Default  string             `json:"default"`
-	Profiles map[string]profile `json:"profiles"`
+	Default   string             `json:"default"`
+	ProxyOnly bool               `json:"proxy_only,omitempty"`
+	Profiles  map[string]profile `json:"profiles"`
 }
 
 type authStatus struct {
@@ -138,6 +139,8 @@ func dispatch(args []string) error {
 			return errors.New("usage: ccenv default <name>")
 		}
 		return setDefault(args[1])
+	case "proxy-only":
+		return setProxyOnly(args[1:])
 	case "local":
 		return local(args[1:])
 	case "current":
@@ -184,6 +187,7 @@ func usage() {
   ccenv refresh <name>                    Pin the profile's current login after re-authentication
   ccenv login <name>                      Sign a registered profile in, in its own config and credential store
   ccenv default <name>                    Set the global fallback
+  ccenv proxy-only [on|off]               Require gateway authentication for Claude Code
   ccenv local <name> [--proxy-url URL --api-key-file FILE] [--model MODEL]
                                            Write folder settings in .ccenv
   ccenv current                           Show the selected profile and source
@@ -264,6 +268,28 @@ func saveConfig(c config) error {
 		return err
 	}
 	return os.Rename(f.Name(), p)
+}
+
+func setProxyOnly(args []string) error {
+	if len(args) > 1 || (len(args) == 1 && args[0] != "on" && args[0] != "off") {
+		return errors.New("usage: ccenv proxy-only [on|off]")
+	}
+	c, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	if len(args) == 1 {
+		c.ProxyOnly = args[0] == "on"
+		if err := saveConfig(c); err != nil {
+			return err
+		}
+	}
+	if c.ProxyOnly {
+		fmt.Println("Proxy-only mode: on (Claude Code requires a folder proxy; local login fallback disabled)")
+	} else {
+		fmt.Println("Proxy-only mode: off")
+	}
+	return nil
 }
 
 func expandPath(p string) (string, error) {
@@ -578,6 +604,9 @@ func add(name, dir string) error {
 	if err != nil {
 		return err
 	}
+	if c.ProxyOnly {
+		return errors.New("proxy-only mode is enabled; local login management is disabled")
+	}
 	if _, exists := c.Profiles[name]; exists {
 		return fmt.Errorf("profile %q already exists; edit the config file to update it", name)
 	}
@@ -608,6 +637,9 @@ func refresh(name string) error {
 	c, err := loadConfig()
 	if err != nil {
 		return err
+	}
+	if c.ProxyOnly {
+		return errors.New("proxy-only mode is enabled; local login management is disabled")
 	}
 	p, err := requireProfile(c, name)
 	if err != nil {
@@ -640,6 +672,9 @@ func login(name string) error {
 	c, err := loadConfig()
 	if err != nil {
 		return err
+	}
+	if c.ProxyOnly {
+		return errors.New("proxy-only mode is enabled; local login management is disabled")
 	}
 	p, err := requireProfile(c, name)
 	if err != nil {
@@ -813,7 +848,9 @@ func current() error {
 		} else if s.Proxy.AuthProfile != "" {
 			directName = s.Proxy.AuthProfile
 		}
-		if len(s.Launches) > 0 {
+		if c.ProxyOnly {
+			fmt.Printf("Proxy-only: %s (local Claude login disabled)\n", s.Proxy.URL)
+		} else if len(s.Launches) > 0 {
 			fmt.Printf("Proxy: %s\n", s.Proxy.URL)
 		} else {
 			fmt.Printf("Proxy: %s (direct fallback account: %s)\n", s.Proxy.URL, directName)
@@ -867,6 +904,10 @@ func check() error {
 	c, err := loadConfig()
 	if err != nil {
 		return err
+	}
+	if c.ProxyOnly {
+		fmt.Println("Proxy-only mode: local login pins are inactive; launch from a workspace to check its gateway route")
+		return nil
 	}
 	names := make([]string, 0, len(c.Profiles))
 	for n := range c.Profiles {
@@ -936,9 +977,15 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	if c.ProxyOnly && (*direct || *ignorePin) {
+		return errors.New("--direct and --ignore-pin are disabled in proxy-only mode")
+	}
 	s, p, err := selected(c, *name)
 	if err != nil {
 		return err
+	}
+	if c.ProxyOnly && s.Proxy == nil {
+		return fmt.Errorf("proxy-only mode requires a folder proxy; no proxy selected from %s", s.Source)
 	}
 	if len(s.Launches) > 0 && (*direct || *ignorePin) && *account == "" && *proxyRoute == "" {
 		return errors.New("--direct and --ignore-pin require an explicit --account or --profile when folder launches are configured")
@@ -981,7 +1028,7 @@ func run(args []string) error {
 	}
 	credentialsName := accountName
 	credentialsProfile := accountProfile
-	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name && !*gatewayAuth {
+	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name && !*gatewayAuth && !c.ProxyOnly {
 		credentialsName = s.Proxy.AuthProfile
 		credentialsProfile, err = requireProfile(c, credentialsName)
 		if err != nil {
@@ -990,6 +1037,9 @@ func run(args []string) error {
 		if credentialsProfile.Email != accountProfile.Email || credentialsProfile.OrgID != accountProfile.OrgID {
 			return fmt.Errorf("proxy auth_profile %s must have the same pinned identity as %s", credentialsName, accountName)
 		}
+	}
+	if c.ProxyOnly {
+		credentialsName, credentialsProfile = s.Name, p
 	}
 	if s.Proxy != nil && !*direct {
 		if *ignorePin {
@@ -1003,7 +1053,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		if *gatewayAuth {
+		if *gatewayAuth || c.ProxyOnly {
 			if os.Getenv("ANTHROPIC_CUSTOM_HEADERS") != "" {
 				return errors.New("ANTHROPIC_CUSTOM_HEADERS is set; unset it before using --gateway-auth")
 			}
@@ -1047,19 +1097,21 @@ func run(args []string) error {
 			if err != nil {
 				return err
 			}
-			if *proxyRoute != "" {
+			if *proxyRoute != "" || c.ProxyOnly {
 				fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s with %s gateway route\n", s.Name, proxy.URL, routeName)
 			} else {
 				fmt.Fprintf(os.Stderr, "ccenv: using %s config through proxy %s with %s account routing\n", s.Name, proxy.URL, accountName)
 			}
 			if proxy.AuthMode == "claudeai" {
 				fmt.Fprintf(os.Stderr, "ccenv: native claude.ai subscription login verified for %s\n", accountProfile.Email)
-			} else if *gatewayAuth {
+			} else if *gatewayAuth || c.ProxyOnly {
 				fmt.Fprintln(os.Stderr, "ccenv: gateway authentication selected; Claude Code plan usage bars are unavailable")
 			}
 			return syscall.Exec(bin, append([]string{bin}, claudeArgs...), proxyEnvironment(os.Environ(), launchConfigDir, credentialsProfile.Dir, proxy, key))
 		} else if *proxyRoute != "" {
 			return fmt.Errorf("proxy route %s unavailable: %w", routeName, err)
+		} else if c.ProxyOnly {
+			return fmt.Errorf("proxy-only mode: gateway unavailable: %w", err)
 		} else if blocked := new(proxyAccountLimit); errors.As(err, &blocked) {
 			return fmt.Errorf("%s account (%s): %w; direct login uses the same account limit. Wait for retry or explicitly choose another account with cc --account NAME --model opus", accountName, accountProfile.Email, err)
 		} else if err := offerDirectFallback(err, credentialsName, credentialsProfile); err != nil {
