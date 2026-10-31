@@ -23,3 +23,16 @@ func TestMenuFrameShowsOnlySelectedLaunchDetails(t *testing.T) {
 		}
 	}
 }
+
+func TestMenuFrameShowsPoolAndFallbackMembers(t *testing.T) {
+	previews := []launchPreview{
+		{Choice: launchChoice{Name: "pool"}, ProxyRoute: "family-pool", Members: []string{"family-kate", "other.water"}, MembersKnown: true},
+		{Choice: launchChoice{Name: "fallback"}, ProxyRoute: "family-fallback", Members: []string{"tiny.bulb"}, MembersKnown: true},
+	}
+	frame := menuFrame(selection{Source: "/work/.ccenv"}, previews, 0, false)
+	for _, want := range []string{"› pool", "family-kate, other.water", "fallback", "tiny.bulb", "Accounts      family-kate, other.water"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("menu missing %q: %q", want, frame)
+		}
+	}
+}

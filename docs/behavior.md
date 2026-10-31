@@ -159,7 +159,11 @@ With multiple launches, `ccenv run --` opens a compact menu on `/dev/tty` before
 contacting the proxy. Up and down arrows (or `j` and `k`) highlight a choice;
 Enter launches it and `q` cancels. The detail panel shows the selected config
 home, actual Claude config directory when a split overlay is needed, secure
-storage home, authentication source, proxy route, and model. A terminal without
+storage home, authentication source, proxy route, and model.
+For `*-pool` and `*-fallback` routes, ccenv also reads the gateway's
+`/v1/pool-status` endpoint to show current account labels in the menu. If the
+status call fails, the menu says the membership is unavailable and the chosen
+route is still checked normally at launch. A terminal without
 cursor controls uses the numbered line prompt, where a blank answer cancels.
 Without an interactive terminal, selection
 stops and names the available `--choice` values. A single launch is selected
