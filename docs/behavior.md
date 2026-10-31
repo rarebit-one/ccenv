@@ -25,7 +25,8 @@ A `.ccenv` can also contain one JSON object:
     "url": "http://127.0.0.1:18321",
     "api_key_file": "~/.config/ccenv/keys/rarebit",
     "model": "claude-sonnet-4-6",
-    "timeout_seconds": 3
+    "timeout_seconds": 6,
+    "fallback_urls": ["https://backup-gateway.example"]
   }
 }
 ```
@@ -44,6 +45,12 @@ credentials, a query, a fragment, or a trailing `/v1`. The preflight sends the
 client key to `GET <url>/v1/models`, refuses redirects, and requires a nonempty
 model catalog. An optional `model` must be advertised by that catalog. The
 preflight timeout defaults to three seconds and accepts values from one to 30.
+`fallback_urls` is optional. ccenv checks the primary `url` first, then each
+backup in order until the selected model route is available. The successful
+URL is passed to Claude Code for that launch. Every backup must meet the same
+HTTPS or loopback-HTTP rule as the primary, and redirects are never followed.
+This handles a site outage or a slow preflight without changing the selected
+pool or account route.
 
 On success, ccenv launches Claude with the selected config directory,
 `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and the optional `ANTHROPIC_MODEL`.
@@ -164,6 +171,7 @@ contacting the proxy. Up and down arrows (or `j` and `k`) highlight a choice;
 Enter launches it and `q` cancels. The detail panel shows the selected config
 home, actual Claude config directory when a split overlay is needed, secure
 storage home, authentication source, proxy route, and model.
+
 For `*-pool` and `*-fallback` routes, ccenv also reads the gateway's
 `/v1/pool-status` endpoint to show current account labels in the menu. If the
 status call fails, the menu says the membership is unavailable and the chosen

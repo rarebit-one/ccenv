@@ -15,7 +15,16 @@ func poolMembers(p proxyConfig) map[string][]string {
 	if err != nil {
 		return nil
 	}
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(p.URL, "/")+"/v1/pool-status", nil)
+	for _, endpoint := range append([]string{p.URL}, p.FallbackURLs...) {
+		if members := fetchPoolMembers(endpoint, key); members != nil {
+			return members
+		}
+	}
+	return nil
+}
+
+func fetchPoolMembers(endpoint, key string) map[string][]string {
+	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(endpoint, "/")+"/v1/pool-status", nil)
 	if err != nil {
 		return nil
 	}

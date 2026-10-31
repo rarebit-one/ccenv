@@ -64,6 +64,8 @@ func TestFolderProxySelection(t *testing.T) {
 		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","auth_profile":"work-login"}}`,
 		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","auth_mode":"claudeai","auth_profile":"../work"}}`,
 		`{"profile":"work","proxy":{"url":"http://localhost","api_key_file":"key","provider":"unknown"}}`,
+		`{"profile":"work","proxy":{"url":"https://proxy.test","fallback_urls":["http://remote.test"],"api_key_file":"key"}}`,
+		`{"profile":"work","proxy":{"url":"https://proxy.test","fallback_urls":["https://proxy.test"],"api_key_file":"key"}}`,
 		`{"profile":"work"} {"profile":"other"}`,
 		`{"profile":"unknown"}`,
 	} {
@@ -73,6 +75,27 @@ func TestFolderProxySelection(t *testing.T) {
 		if _, err := selectProfile(c, child, ""); err == nil {
 			t.Fatalf("accepted invalid settings %s", value)
 		}
+	}
+}
+
+func TestProxyPreflightUsesBackupSiteWhenPrimaryFails(t *testing.T) {
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "site unavailable", http.StatusServiceUnavailable)
+	}))
+	defer primary.Close()
+	backup := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" || r.Header.Get("Authorization") != "Bearer client-key" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		fmt.Fprint(w, `{"data":[{"id":"fundbright-fallback/claude-opus-5-5"}]}`)
+	}))
+	defer backup.Close()
+	p := proxyConfig{URL: primary.URL, FallbackURLs: []string{backup.URL},
+		Model: "fundbright-fallback/claude-opus-5-5", TimeoutSeconds: 2}
+	selected, err := checkProxySites(p, "client-key")
+	if err != nil || selected.URL != backup.URL {
+		t.Fatalf("backup site not selected: %s, %v", selected.URL, err)
 	}
 }
 

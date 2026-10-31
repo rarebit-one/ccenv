@@ -47,6 +47,7 @@ type proxyConfig struct {
 	AuthMode       string            `json:"auth_mode,omitempty"`
 	AuthProfile    string            `json:"auth_profile,omitempty"`
 	URL            string            `json:"url"`
+	FallbackURLs   []string          `json:"fallback_urls,omitempty"`
 	APIKeyFile     string            `json:"api_key_file"`
 	Model          string            `json:"model,omitempty"`
 	DefaultModels  map[string]string `json:"default_models,omitempty"`
@@ -121,19 +122,26 @@ func validateProxy(p *proxyConfig, directory string) error {
 	if p.AuthProfile != "" && (p.AuthMode != "claudeai" || !validName.MatchString(p.AuthProfile)) {
 		return errors.New("proxy auth_profile requires claudeai mode and a valid profile name")
 	}
-	u, err := url.Parse(p.URL)
-	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return errors.New("proxy URL must have a host and no embedded credentials, query, or fragment")
+	if err := validateProxyURL(p.URL); err != nil {
+		return err
 	}
-	if u.Scheme != "https" {
-		ip := net.ParseIP(u.Hostname())
-		if u.Scheme != "http" || (u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback())) {
-			return errors.New("proxy URL requires HTTPS or loopback HTTP")
+	p.URL = strings.TrimRight(p.URL, "/")
+	seenURLs := map[string]bool{p.URL: true}
+	for i, candidate := range p.FallbackURLs {
+		if err := validateProxyURL(candidate); err != nil {
+			return fmt.Errorf("proxy fallback_urls[%d]: %w", i, err)
 		}
+		candidate = strings.TrimRight(candidate, "/")
+		if seenURLs[candidate] {
+			return fmt.Errorf("proxy fallback_urls[%d] duplicates an earlier URL", i)
+		}
+		seenURLs[candidate] = true
+		p.FallbackURLs[i] = candidate
 	}
 	if p.APIKeyFile == "" {
 		return errors.New("proxy requires api_key_file; keep the key outside the selector")
 	}
+	var err error
 	if !filepath.IsAbs(p.APIKeyFile) && !strings.HasPrefix(p.APIKeyFile, "~/") {
 		p.APIKeyFile = filepath.Join(directory, p.APIKeyFile)
 	}
@@ -158,11 +166,41 @@ func validateProxy(p *proxyConfig, directory string) error {
 			return errors.New("proxy default_models values must be nonempty model names")
 		}
 	}
-	p.URL = strings.TrimRight(p.URL, "/")
-	if strings.HasSuffix(p.URL, "/v1") {
+	return nil
+}
+
+func validateProxyURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("proxy URL must have a host and no embedded credentials, query, or fragment")
+	}
+	if u.Scheme != "https" {
+		ip := net.ParseIP(u.Hostname())
+		if u.Scheme != "http" || (u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback())) {
+			return errors.New("proxy URL requires HTTPS or loopback HTTP")
+		}
+	}
+	if strings.HasSuffix(strings.TrimRight(raw, "/"), "/v1") {
 		return errors.New("proxy URL must be the base URL without /v1")
 	}
 	return nil
+}
+
+func checkProxySites(p proxyConfig, key string) (proxyConfig, error) {
+	if len(p.FallbackURLs) == 0 {
+		return p, checkProxy(p, key)
+	}
+	var failures []error
+	for _, endpoint := range append([]string{p.URL}, p.FallbackURLs...) {
+		candidate := p
+		candidate.URL = endpoint
+		if err := checkProxy(candidate, key); err == nil {
+			return candidate, nil
+		} else {
+			failures = append(failures, fmt.Errorf("%s: %w", endpoint, err))
+		}
+	}
+	return p, errors.Join(failures...)
 }
 
 func local(args []string) error {

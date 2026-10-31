@@ -1122,7 +1122,8 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := checkProxy(proxy, key); err == nil {
+		proxy, preflightErr := checkProxySites(proxy, key)
+		if preflightErr == nil {
 			if credentialsProfile.Dir != p.Dir {
 				if err := requireSeparateCredentialsSupport(); err != nil {
 					return err
@@ -1167,12 +1168,12 @@ func run(args []string) error {
 			}
 			return syscall.Exec(bin, append([]string{bin}, claudeArgs...), proxyEnvironment(os.Environ(), launchConfigDir, credentialsProfile.Dir, proxy, key))
 		} else if *proxyRoute != "" {
-			return fmt.Errorf("proxy route %s unavailable: %w", routeName, err)
+			return fmt.Errorf("proxy route %s unavailable: %w", routeName, preflightErr)
 		} else if c.ProxyOnly {
-			return fmt.Errorf("proxy-only mode: gateway unavailable: %w", err)
-		} else if blocked := new(proxyAccountLimit); errors.As(err, &blocked) {
-			return fmt.Errorf("%s account (%s): %w; direct login uses the same account limit. Wait for retry or explicitly choose another account with cc --account NAME --model opus", accountName, accountProfile.Email, err)
-		} else if err := offerDirectFallback(err, credentialsName, credentialsProfile); err != nil {
+			return fmt.Errorf("proxy-only mode: gateway unavailable: %w", preflightErr)
+		} else if blocked := new(proxyAccountLimit); errors.As(preflightErr, &blocked) {
+			return fmt.Errorf("%s account (%s): %w; direct login uses the same account limit. Wait for retry or explicitly choose another account with cc --account NAME --model opus", accountName, accountProfile.Email, preflightErr)
+		} else if err := offerDirectFallback(preflightErr, credentialsName, credentialsProfile); err != nil {
 			return err
 		}
 	}
