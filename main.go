@@ -877,7 +877,7 @@ func run(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	name := fs.String("profile", "", "profile override")
 	account := fs.String("account", "", "registered account profile whose credentials to use")
-	proxyRoute := fs.String("proxy-route", "", "gateway-only model route for this launch")
+	proxyRoute := fs.String("proxy-route", "", "proxy model route for this launch")
 	ignorePin := fs.Bool("ignore-pin", false, "bypass the saved account identity for this launch")
 	direct := fs.Bool("direct", false, "skip the folder proxy and use the pinned direct login")
 	if err := fs.Parse(args); err != nil {
@@ -902,9 +902,6 @@ func run(args []string) error {
 	if *proxyRoute != "" && s.Proxy == nil {
 		return errors.New("--proxy-route requires a folder proxy")
 	}
-	if *proxyRoute != "" && s.Proxy.AuthMode == "claudeai" {
-		return errors.New("--proxy-route requires gateway-token mode; this folder uses a claude.ai subscription login, so register that account locally and use --account instead")
-	}
 	accountName := *account
 	if *proxyRoute != "" {
 		accountName = s.Name
@@ -923,7 +920,7 @@ func run(args []string) error {
 	}
 	credentialsName := accountName
 	credentialsProfile := accountProfile
-	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name && *proxyRoute == "" {
+	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name {
 		credentialsName = s.Proxy.AuthProfile
 		credentialsProfile, err = requireProfile(c, credentialsName)
 		if err != nil {

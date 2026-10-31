@@ -84,9 +84,12 @@ wins, and `--profile` ignores the folder default. NAME must be a registered
 profile, or selection stops. `proxy.auth_profile` applies only when the account
 is the config profile itself. `ccenv current` names the folder account.
 `--proxy-route NAME` uses the same complete model-prefix rewrite without a
-registered local account. It requires gateway-token mode and never checks a
-local login. A folder using `claudeai` mode refuses this flag so a subscription
-session cannot silently switch to gateway-token authentication.
+registered local account. It preserves the folder's authentication mode.
+In `claudeai` mode it verifies the selected local login and sends a separate
+gateway client key as `x-api-key`, without setting `ANTHROPIC_AUTH_TOKEN`.
+In gateway-token mode it does not check a local login. The local Claude Code
+identity can differ from the gateway's upstream account; verify the serving
+credential using gateway counters.
 It requires a folder proxy, a valid route name, and catalog entries for every
 rewritten model. It cannot be combined with `--account`, `--direct`, or
 `--ignore-pin`. On proxy failure or quota limits it stops without offering
