@@ -128,10 +128,10 @@ CLAUDE_CONFIG_DIR=/wrong-shim-profile exec "$FAKE_REAL_CLAUDE" "$@"
 	if output, err := ccShell.CombinedOutput(); err != nil || string(output) != "ARG=run\nARG=--profile\nARG=personal\nARG=--account\nARG=rarebit\nARG=--ignore-pin\nARG=--\nARG=-p\nARG=hello world\n" {
 		t.Fatalf("cc account shortcut: err=%v, output=%s", err, output)
 	}
-	ccRoute := exec.Command("bash", "-c", `source "$1"; cc --proxy-route sidekick-ryan -- -p 'hello world'`, "bash", initFile)
+	ccRoute := exec.Command("bash", "-c", `source "$1"; cc --proxy-route sidekick-ryan --gateway-auth -- -p 'hello world'`, "bash", initFile)
 	ccRoute.Dir = root
 	ccRoute.Env = ccEnvPath
-	if output, err := ccRoute.CombinedOutput(); err != nil || string(output) != "ARG=run\nARG=--proxy-route\nARG=sidekick-ryan\nARG=--\nARG=-p\nARG=hello world\n" {
+	if output, err := ccRoute.CombinedOutput(); err != nil || string(output) != "ARG=run\nARG=--proxy-route\nARG=sidekick-ryan\nARG=--gateway-auth\nARG=--\nARG=-p\nARG=hello world\n" {
 		t.Fatalf("cc proxy route shortcut: err=%v, output=%s", err, output)
 	}
 	mustRun(root, "add", "personal", personal)

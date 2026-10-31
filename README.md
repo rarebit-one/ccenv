@@ -177,6 +177,11 @@ gateway-token mode uses `ANTHROPIC_AUTH_TOKEN` and does not check a local login.
 The local account shown by Claude Code can differ from the upstream account
 selected by the proxy route. Verify that binding at the gateway. The route must
 be advertised by the proxy and its models must use the folder profile's prefix.
+Add `--gateway-auth` to use the gateway client token even when the folder uses
+`auth_mode: "claudeai"`. This explicitly bypasses the local Claude login for
+that launch, so Claude Code shows no local plan usage bars. Its session cost is
+a local estimate; the gateway's upstream credential determines which provider
+account serves requests. Check that account at the gateway.
 It cannot be combined with `--account`, `--direct`, or `--ignore-pin`. If the
 proxy is unavailable, ccenv stops rather than falling back to a different
 direct account. The gateway must keep that route exclusive to the intended
@@ -273,7 +278,8 @@ profile's Desktop running. The launcher and Omarchy commands are Linux-only.
 | `ccenv run -- [CLAUDE_ARGS...]` | Launch Claude with the selected profile, forwarding arguments unchanged. |
 | `ccenv run --profile NAME -- [CLAUDE_ARGS...]` | Launch once with an explicit profile. |
 | `ccenv run --account NAME -- [CLAUDE_ARGS...]` | Use the selected config with another registered profile's pinned credentials. |
-| `ccenv run --proxy-route NAME -- [CLAUDE_ARGS...]` | Use a proxy-only model route for one launch, without a local login or direct fallback. |
+| `ccenv run --proxy-route NAME -- [CLAUDE_ARGS...]` | Change the proxy model route for one launch, preserving the folder's authentication mode and without direct fallback. |
+| `ccenv run --proxy-route NAME --gateway-auth -- [CLAUDE_ARGS...]` | Use the proxy client token for that route without a local Claude login or plan usage bars. |
 | `ccenv run --ignore-pin -- [CLAUDE_ARGS...]` | For one launch, bypass the selected profile's account pin while showing the reported login. |
 | `ccenv desktop [--profile NAME] [-- ARGS...]` | Launch Claude Desktop with the profile's own user data directory and `CLAUDE_CONFIG_DIR`. |
 | `ccenv desktop install` / `uninstall` | Write or remove per-profile app launchers and the `claude://` link router (Linux). |

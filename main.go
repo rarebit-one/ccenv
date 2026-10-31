@@ -95,13 +95,13 @@ func dispatch(args []string) error {
     case "${1-}" in
       --profile|--account|--proxy-route)
         if (($# < 2)); then
-          printf 'usage: cc [--profile <name>] [--account <name>] [--proxy-route <name>] [--ignore-pin] [--direct] [--] [CLAUDE_ARGS...]\n' >&2
+          printf 'usage: cc [--profile <name>] [--account <name>] [--proxy-route <name>] [--gateway-auth] [--ignore-pin] [--direct] [--] [CLAUDE_ARGS...]\n' >&2
           return 2
         fi
         ccenv_args+=("$1" "$2")
         shift 2
         ;;
-      --ignore-pin|--direct)
+      --gateway-auth|--ignore-pin|--direct)
         ccenv_args+=("$1")
         shift
         ;;
@@ -189,7 +189,7 @@ func usage() {
   ccenv list [--json]                     List registered profiles
   ccenv discover                          Find unregistered Claude config directories
   ccenv check                             Verify logins and flag duplicate accounts
-  ccenv run [--profile <name>] [--account <name>] [--proxy-route <name>] [--ignore-pin] [--direct] -- [args]
+  ccenv run [--profile <name>] [--account <name>] [--proxy-route <name>] [--gateway-auth] [--ignore-pin] [--direct] -- [args]
                                            Launch Claude Code
   ccenv desktop [--profile <name>] [-- args]
                                            Launch Claude Desktop with the profile's own app data
@@ -878,10 +878,14 @@ func run(args []string) error {
 	name := fs.String("profile", "", "profile override")
 	account := fs.String("account", "", "registered account profile whose credentials to use")
 	proxyRoute := fs.String("proxy-route", "", "proxy model route for this launch")
+	gatewayAuth := fs.Bool("gateway-auth", false, "use the proxy client token without selecting a local Claude login")
 	ignorePin := fs.Bool("ignore-pin", false, "bypass the saved account identity for this launch")
 	direct := fs.Bool("direct", false, "skip the folder proxy and use the pinned direct login")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *gatewayAuth && *proxyRoute == "" {
+		return errors.New("--gateway-auth requires --proxy-route")
 	}
 	if *proxyRoute != "" {
 		if !validName.MatchString(*proxyRoute) {
@@ -920,7 +924,7 @@ func run(args []string) error {
 	}
 	credentialsName := accountName
 	credentialsProfile := accountProfile
-	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name {
+	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name && !*gatewayAuth {
 		credentialsName = s.Proxy.AuthProfile
 		credentialsProfile, err = requireProfile(c, credentialsName)
 		if err != nil {
@@ -941,6 +945,13 @@ func run(args []string) error {
 		proxy, err := proxyForAccount(*s.Proxy, s.Name, routeName)
 		if err != nil {
 			return err
+		}
+		if *gatewayAuth {
+			if os.Getenv("ANTHROPIC_CUSTOM_HEADERS") != "" {
+				return errors.New("ANTHROPIC_CUSTOM_HEADERS is set; unset it before using --gateway-auth")
+			}
+			proxy.AuthMode = "gateway"
+			proxy.AuthProfile = ""
 		}
 		key, err := readProxyKey(proxy.APIKeyFile)
 		if err != nil {
@@ -986,6 +997,8 @@ func run(args []string) error {
 			}
 			if proxy.AuthMode == "claudeai" {
 				fmt.Fprintf(os.Stderr, "ccenv: native claude.ai subscription login verified for %s\n", accountProfile.Email)
+			} else if *gatewayAuth {
+				fmt.Fprintln(os.Stderr, "ccenv: gateway authentication selected; Claude Code plan usage bars are unavailable")
 			}
 			return syscall.Exec(bin, append([]string{bin}, claudeArgs...), proxyEnvironment(os.Environ(), launchConfigDir, credentialsProfile.Dir, proxy, key))
 		} else if *proxyRoute != "" {
