@@ -309,6 +309,7 @@ profile's Desktop running. The launcher and Omarchy commands are Linux-only.
 ## Files and overrides
 
 - `~/.config/ccenv/config.json`: global default, profile paths, and expected account identities. Respects `XDG_CONFIG_HOME`.
+- `claude_plugin_dirs` in that config: optional local plugin directories loaded on every `ccenv run` with `--plugin-dir`.
 - `.ccenv`: one profile name, found by walking from the working directory to the filesystem root.
 - `CCENV_CONFIG`: use a different global config path, useful for testing.
 - `CCENV_CLAUDE_BIN`: explicit path to the Claude Code executable, if it is not discoverable on `PATH`.

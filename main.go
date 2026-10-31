@@ -28,9 +28,10 @@ type profile struct {
 }
 
 type config struct {
-	Default   string             `json:"default"`
-	ProxyOnly bool               `json:"proxy_only,omitempty"`
-	Profiles  map[string]profile `json:"profiles"`
+	Default          string             `json:"default"`
+	ProxyOnly        bool               `json:"proxy_only,omitempty"`
+	ClaudePluginDirs []string           `json:"claude_plugin_dirs,omitempty"`
+	Profiles         map[string]profile `json:"profiles"`
 }
 
 type authStatus struct {
@@ -301,6 +302,34 @@ func expandPath(p string) (string, error) {
 		p = filepath.Join(h, strings.TrimPrefix(p, "~/"))
 	}
 	return filepath.Abs(p)
+}
+
+// configuredClaudeArgs loads the same local plugins for every ccenv launch,
+// regardless of the selected folder or upstream proxy account.
+func configuredClaudeArgs(c config, args []string) ([]string, error) {
+	result := make([]string, 0, len(args)+2*len(c.ClaudePluginDirs))
+	seen := map[string]bool{}
+	for _, configured := range c.ClaudePluginDirs {
+		if !filepath.IsAbs(configured) && !strings.HasPrefix(configured, "~/") {
+			return nil, fmt.Errorf("claude_plugin_dirs entry %q must be an absolute path or start with ~/", configured)
+		}
+		dir, err := expandPath(configured)
+		if err != nil {
+			return nil, fmt.Errorf("claude_plugin_dirs entry %q: %w", configured, err)
+		}
+		info, err := os.Stat(dir)
+		if err != nil {
+			return nil, fmt.Errorf("claude_plugin_dirs entry %q: %w", configured, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("claude_plugin_dirs entry %q is not a directory", configured)
+		}
+		if !seen[dir] {
+			result = append(result, "--plugin-dir", dir)
+			seen[dir] = true
+		}
+	}
+	return append(result, args...), nil
 }
 
 func claudeBinary() (string, error) {
@@ -980,6 +1009,10 @@ func run(args []string) error {
 	if c.ProxyOnly && (*direct || *ignorePin) {
 		return errors.New("--direct and --ignore-pin are disabled in proxy-only mode")
 	}
+	launchArgs, err := configuredClaudeArgs(c, fs.Args())
+	if err != nil {
+		return err
+	}
 	s, p, err := selected(c, *name)
 	if err != nil {
 		return err
@@ -1093,7 +1126,7 @@ func run(args []string) error {
 			if err != nil {
 				return err
 			}
-			claudeArgs, err := proxyClaudeArgs(fs.Args(), proxy)
+			claudeArgs, err := proxyClaudeArgs(launchArgs, proxy)
 			if err != nil {
 				return err
 			}
@@ -1144,5 +1177,5 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	return syscall.Exec(bin, append([]string{bin}, fs.Args()...), withClaudeDirs(os.Environ(), launchConfigDir, credentialsProfile.Dir))
+	return syscall.Exec(bin, append([]string{bin}, launchArgs...), withClaudeDirs(os.Environ(), launchConfigDir, credentialsProfile.Dir))
 }
