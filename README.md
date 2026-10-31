@@ -312,6 +312,7 @@ profile's Desktop running. The launcher and Omarchy commands are Linux-only.
 - `claude_plugin_dirs` in that config: optional local plugin directories loaded on every `ccenv run` with `--plugin-dir`.
 - `.ccenv`: one profile name, found by walking from the working directory to the filesystem root.
 - `~/.ccenv`: optional home-level pool menu for directories under your home; each route choice can set `profile` to launch from a different registered config home.
+- `home_selector: true` in the global config: also use `~/.ccenv` from outside the home tree when no closer selector exists.
 - `CCENV_CONFIG`: use a different global config path, useful for testing.
 - `CCENV_CLAUDE_BIN`: explicit path to the Claude Code executable, if it is not discoverable on `PATH`.
 - `CCENV_DESKTOP_BIN`: explicit path to the Claude Desktop executable (default `claude-desktop` on `PATH`).
