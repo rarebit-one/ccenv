@@ -189,5 +189,18 @@ func selectFolderLaunch(c config, s selection, p profile, name string) (launchCh
 		return launchChoice{}, fmt.Errorf("multiple launches in %s; use --choice NAME (%s) without an interactive terminal", s.Source, strings.Join(names, ", "))
 	}
 	defer tty.Close()
-	return promptLaunchChoice(tty, tty, s, previews)
+	if !terminalMenuAvailable(tty) {
+		return promptLaunchChoice(tty, tty, s, previews)
+	}
+	choice, err := promptLaunchTUI(tty, s, previews)
+	if err != nil {
+		return launchChoice{}, err
+	}
+	for _, preview := range previews {
+		if preview.Choice.Name == choice.Name {
+			fmt.Fprintf(os.Stderr, "ccenv: selected %s; config home %s; secure storage home %s\n", choice.Name, preview.ConfigHome, preview.StorageHome)
+			break
+		}
+	}
+	return choice, nil
 }
