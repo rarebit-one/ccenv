@@ -82,6 +82,27 @@ func TestConfigRoundTrip(t *testing.T) {
 	}
 }
 
+func TestConfiguredClaudePluginsFollowEveryLaunch(t *testing.T) {
+	dir := t.TempDir()
+	c := config{ClaudePluginDirs: []string{dir, dir}}
+	got, err := configuredClaudeArgs(c, []string{"--print", "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--plugin-dir", dir, "--print", "hello"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("Claude args = %q, want %q", got, want)
+	}
+	c.ClaudePluginDirs = []string{"relative/plugin"}
+	if _, err := configuredClaudeArgs(c, nil); err == nil {
+		t.Fatal("relative plugin path was accepted")
+	}
+	c.ClaudePluginDirs = []string{filepath.Join(dir, "missing")}
+	if _, err := configuredClaudeArgs(c, nil); err == nil {
+		t.Fatal("missing plugin path was accepted")
+	}
+}
+
 func TestVerifyRejectsChangedAccount(t *testing.T) {
 	root := t.TempDir()
 	bin := filepath.Join(root, "claude")

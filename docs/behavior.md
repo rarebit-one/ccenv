@@ -176,6 +176,7 @@ The generated user config is JSON at `~/.config/ccenv/config.json` on Linux, or 
 ```json
 {
   "default": "personal",
+  "claude_plugin_dirs": ["/home/alice/plugins/pool-usage"],
   "profiles": {
     "personal": {
       "dir": "/home/alice/.claude-personal",
@@ -187,6 +188,10 @@ The generated user config is JSON at `~/.config/ccenv/config.json` on Linux, or 
 ```
 
 This file contains account identifiers and paths, but no login tokens. New config files are created with mode `0600`. Credentials remain managed by Claude Code in each profile directory.
+`claude_plugin_dirs` is optional. Each absolute or `~/` directory is passed to
+Claude Code as `--plugin-dir` on every `ccenv run`, including gateway launches.
+Missing directories stop the launch so a requested local plugin is not silently
+omitted. Desktop launches do not use this option.
 
 A profile may point at Claude Code's default directory, `~/.claude`. Claude
 keeps that directory's account cache at `~/.claude.json`, outside it, and reads
