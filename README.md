@@ -186,6 +186,13 @@ It cannot be combined with `--account`, `--direct`, or `--ignore-pin`. If the
 proxy is unavailable, ccenv stops rather than falling back to a different
 direct account. The gateway must keep that route exclusive to the intended
 upstream credential. A folder's default `account` is ignored for this launch.
+For a machine that should never use a local Claude Code login, run
+`ccenv proxy-only on`. This global setting makes every folder proxy use the
+gateway client token, even when an older `.ccenv` says `auth_mode: "claudeai"`.
+It rejects `--direct`, prevents local login management through ccenv, and stops
+when the gateway is unavailable or a folder has no proxy. `ccenv proxy-only`
+shows the setting; `ccenv proxy-only off` restores the folder's normal mode.
+The setting applies to Claude Code launches, not Claude Desktop.
 For a folder with several permitted launches, add a `launches` array to its
 JSON `.ccenv`. Each entry has a unique `name` and either a registered `account`
 or a `proxy_route`; a proxy route may also set `gateway_auth: true`. Running

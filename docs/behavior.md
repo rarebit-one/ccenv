@@ -105,6 +105,16 @@ It ignores the folder's default `account` for this proxy-only launch.
 Caller credential and gateway environment overrides remain prohibited in both
 modes. Proxy settings do not apply to Claude Desktop.
 
+`ccenv proxy-only on` stores `proxy_only: true` in the global ccenv config.
+When enabled, every Claude Code launch requires a folder proxy and uses its
+client token for gateway authentication regardless of the folder's `auth_mode`.
+Local Claude login verification, account-cache splits, and direct fallback are
+disabled. `--direct` and `--ignore-pin` are rejected; `ccenv add`, `login`, and
+`refresh` cannot create or update local login pins. A failed gateway preflight
+stops the launch. `ccenv check` reports that local pins are inactive; it does
+not claim to check every workspace proxy. `ccenv proxy-only off` restores the
+folder's configured behavior. Claude Desktop is outside this policy.
+
 ### Folder launch menu
 
 A JSON `.ccenv` may add `launches` to list the launches allowed from that

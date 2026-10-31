@@ -30,7 +30,7 @@ func previewLaunch(c config, s selection, p profile, choice launchChoice) (launc
 		return launchPreview{}, err
 	}
 	credentialsProfile := accountProfile
-	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name && !choice.GatewayAuth {
+	if s.Proxy != nil && s.Proxy.AuthProfile != "" && accountName == s.Name && !choice.GatewayAuth && !c.ProxyOnly {
 		credentialsProfile, err = requireProfile(c, s.Proxy.AuthProfile)
 		if err != nil {
 			return launchPreview{}, err
@@ -38,6 +38,9 @@ func previewLaunch(c config, s selection, p profile, choice launchChoice) (launc
 		if credentialsProfile.Email != accountProfile.Email || credentialsProfile.OrgID != accountProfile.OrgID {
 			return launchPreview{}, fmt.Errorf("proxy auth_profile %s must have the same pinned identity as %s", s.Proxy.AuthProfile, accountName)
 		}
+	}
+	if c.ProxyOnly {
+		credentialsProfile = p
 	}
 	preview := launchPreview{
 		Choice:       choice,
@@ -66,7 +69,7 @@ func previewLaunch(c config, s selection, p profile, choice launchChoice) (launc
 		if strings.HasPrefix(proxy.Model, routeName+"/") {
 			preview.ProxyRoute = routeName
 		}
-		if s.Proxy.AuthMode != "claudeai" || choice.GatewayAuth {
+		if s.Proxy.AuthMode != "claudeai" || choice.GatewayAuth || c.ProxyOnly {
 			preview.AuthSource = "gateway client token; no local account selected"
 		}
 	}
