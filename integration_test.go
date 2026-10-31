@@ -134,6 +134,12 @@ CLAUDE_CONFIG_DIR=/wrong-shim-profile exec "$FAKE_REAL_CLAUDE" "$@"
 	if output, err := ccRoute.CombinedOutput(); err != nil || string(output) != "ARG=run\nARG=--proxy-route\nARG=sidekick-ryan\nARG=--gateway-auth\nARG=--\nARG=-p\nARG=hello world\n" {
 		t.Fatalf("cc proxy route shortcut: err=%v, output=%s", err, output)
 	}
+	ccChoice := exec.Command("bash", "-c", `source "$1"; cc --choice ryan -- -p 'hello world'`, "bash", initFile)
+	ccChoice.Dir = root
+	ccChoice.Env = ccEnvPath
+	if output, err := ccChoice.CombinedOutput(); err != nil || string(output) != "ARG=run\nARG=--choice\nARG=ryan\nARG=--\nARG=-p\nARG=hello world\n" {
+		t.Fatalf("cc launch choice shortcut: err=%v, output=%s", err, output)
+	}
 	mustRun(root, "add", "personal", personal)
 	unauthed := filepath.Join(root, "unauthed-config")
 	if err := os.Mkdir(unauthed, 0700); err != nil {

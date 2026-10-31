@@ -395,6 +395,40 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 		t.Fatalf("native subscription proxy accepted API authentication: %v %s", err, output)
 	}
 	t.Setenv("FAKE_AUTH_METHOD", "claude.ai")
+	choiceSelector := strings.ReplaceAll(nativeSelector, `"claude-test"`, `"work/claude-test"`)
+	choiceSelector = strings.Replace(choiceSelector, `"profile":"work",`, `"profile":"work","launches":[{"name":"work","account":"work"},{"name":"ryan","proxy_route":"ryan","gateway_auth":true}],`, 1)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(choiceSelector), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--")
+	if err == nil || !strings.Contains(output, "multiple launches") || !strings.Contains(output, "--choice NAME") || strings.Contains(output, "DIR=") {
+		t.Fatalf("noninteractive launch silently chose an account: %v %s", err, output)
+	}
+	output, err = call("run", "--direct", "--")
+	if err == nil || !strings.Contains(output, "require an explicit --account or --profile") || strings.Contains(output, "DIR=") {
+		t.Fatalf("direct launch with multiple choices silently chose an account: %v %s", err, output)
+	}
+	output, err = call("run", "--choice", "work", "--")
+	if err != nil || !strings.Contains(output, "Config home: "+root) || !strings.Contains(output, "Secure storage home: "+root) ||
+		!strings.Contains(output, "Authentication: local claude.ai login: work@example.test") || !strings.Contains(output, "MODEL=work/claude-test\n") || !strings.Contains(output, "TOKEN=\n") {
+		t.Fatalf("local menu choice used the wrong home or authentication: %v %s", err, output)
+	}
+	if err := os.Remove(filepath.Join(root, "auth-check")); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--choice", "ryan", "--")
+	if err != nil || !strings.Contains(output, "Authentication: gateway client token; no local account selected") ||
+		!strings.Contains(output, "Config home: "+root) || !strings.Contains(output, "Proxy route: ryan/ through "+server.URL) ||
+		!strings.Contains(output, "TOKEN=test-client-key\nMODEL=ryan/claude-test\n") || !strings.Contains(output, "HEADERS=\n") {
+		t.Fatalf("gateway menu choice used the wrong home or route: %v %s", err, output)
+	}
+	if _, err := os.Stat(filepath.Join(root, "auth-check")); !os.IsNotExist(err) {
+		t.Fatal("gateway menu choice checked the local login")
+	}
+	output, err = call("run", "--choice", "missing", "--")
+	if err == nil || !strings.Contains(output, "unknown launch choice") || strings.Contains(output, "DIR=") {
+		t.Fatalf("unknown launch choice fell back to another account: %v %s", err, output)
+	}
 	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(selector), 0600); err != nil {
 		t.Fatal(err)
 	}
