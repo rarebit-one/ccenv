@@ -18,6 +18,8 @@ type launchPreview struct {
 	ProxyRoute    string
 	ProxyModel    string
 	ProxyEndpoint string
+	Members       []string
+	MembersKnown  bool
 }
 
 func previewLaunch(c config, s selection, p profile, choice launchChoice) (launchPreview, error) {
@@ -89,11 +91,16 @@ func previewLaunch(c config, s selection, p profile, choice launchChoice) (launc
 
 func folderLaunchPreviews(c config, s selection, p profile) ([]launchPreview, error) {
 	previews := make([]launchPreview, 0, len(s.Launches))
+	var members map[string][]string
+	if s.Proxy != nil {
+		members = poolMembers(*s.Proxy)
+	}
 	for _, choice := range s.Launches {
 		preview, err := previewLaunch(c, s, p, choice)
 		if err != nil {
 			return nil, fmt.Errorf("launch %s: %w", choice.Name, err)
 		}
+		preview.Members, preview.MembersKnown = members[preview.ProxyRoute]
 		previews = append(previews, preview)
 	}
 	return previews, nil
@@ -115,6 +122,13 @@ func printLaunchPreview(w io.Writer, number int, preview launchPreview) {
 		fmt.Fprintf(w, "     Proxy route: %s/ through %s\n", preview.ProxyRoute, preview.ProxyEndpoint)
 	} else if preview.ProxyEndpoint != "" {
 		fmt.Fprintf(w, "     Proxy: %s\n", preview.ProxyEndpoint)
+	}
+	if strings.HasSuffix(preview.ProxyRoute, "-pool") || strings.HasSuffix(preview.ProxyRoute, "-fallback") {
+		if preview.MembersKnown {
+			fmt.Fprintf(w, "     Accounts: %s\n", strings.Join(preview.Members, ", "))
+		} else {
+			fmt.Fprintln(w, "     Accounts: unavailable")
+		}
 	}
 	if preview.ProxyModel != "" {
 		fmt.Fprintf(w, "     Startup model: %s\n", preview.ProxyModel)

@@ -31,6 +31,9 @@ func menuFrame(s selection, previews []launchPreview, selected int, color bool) 
 			route = "direct"
 		}
 		fmt.Fprintf(&b, "%s%-16s %s", marker, preview.Choice.Name, route)
+		if preview.MembersKnown {
+			fmt.Fprintf(&b, "  %s", strings.Join(preview.Members, ", "))
+		}
 		if i == selected && color {
 			b.WriteString("\x1b[0m")
 		}
@@ -49,6 +52,13 @@ func menuFrame(s selection, previews []launchPreview, selected int, color bool) 
 	}
 	if preview.ProxyModel != "" {
 		fmt.Fprintf(&b, "Model         %s\r\n", preview.ProxyModel)
+	}
+	if strings.HasSuffix(preview.ProxyRoute, "-pool") || strings.HasSuffix(preview.ProxyRoute, "-fallback") {
+		if preview.MembersKnown {
+			fmt.Fprintf(&b, "Accounts      %s\r\n", strings.Join(preview.Members, ", "))
+		} else {
+			b.WriteString("Accounts      unavailable\r\n")
+		}
 	}
 	b.WriteString("\r\n↑/↓ choose  ·  Enter launch  ·  q cancel")
 	return b.String()
