@@ -326,6 +326,25 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 		!strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
 		t.Fatalf("subscription proxy route must preserve the local login and rewrite all models: %v %s", err, output)
 	}
+	if err := os.Remove(filepath.Join(root, "auth-check")); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call("run", "--proxy-route", "ryan", "--gateway-auth", "--")
+	if err != nil || !strings.Contains(output, "gateway authentication selected") ||
+		!strings.Contains(output, "TOKEN=test-client-key\nMODEL=ryan/claude-test\n") ||
+		!strings.Contains(output, "SONNET=ryan/claude-test\nOPUS=ryan/claude-test\nHAIKU=ryan/claude-test\nSUBAGENT=ryan/claude-test\nFABLE=ryan/claude-test\n") ||
+		!strings.Contains(output, "HEADERS=\n") ||
+		!strings.Contains(output, "CREDENTIALS="+root+"\n") ||
+		!strings.Contains(output, "DIR="+root+"\n") {
+		t.Fatalf("explicit gateway authentication kept a local login or failed to scope Ryan models: %v %s", err, output)
+	}
+	if _, err := os.Stat(filepath.Join(root, "auth-check")); !os.IsNotExist(err) {
+		t.Fatal("gateway authentication checked the local login")
+	}
+	output, err = call("run", "--gateway-auth", "--")
+	if err == nil || !strings.Contains(output, "requires --proxy-route") || strings.Contains(output, "DIR=") {
+		t.Fatalf("gateway authentication without a route launched Claude: %v %s", err, output)
+	}
 	t.Setenv("FAKE_EMAIL", "personal@example.test")
 	output, err = call("run", "--account", "personal", "--", "--model", "opus")
 	if err != nil || !strings.Contains(output, "MODEL=personal/claude-test\nARG=--settings\nARG={\"modelOverrides\":{\"claude-test\":\"personal/claude-test\"}}\nARG=--model\nARG=opus\n") || !strings.Contains(output, "SONNET=personal/claude-test\nOPUS=personal/claude-test\nHAIKU=personal/claude-test\nSUBAGENT=personal/claude-test\nFABLE=personal/claude-test\n") || !strings.Contains(output, "CREDENTIALS="+personalDir+"\n") || !strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {

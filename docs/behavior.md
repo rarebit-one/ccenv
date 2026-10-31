@@ -90,6 +90,11 @@ gateway client key as `x-api-key`, without setting `ANTHROPIC_AUTH_TOKEN`.
 In gateway-token mode it does not check a local login. The local Claude Code
 identity can differ from the gateway's upstream account; verify the serving
 credential using gateway counters.
+`--gateway-auth` with `--proxy-route NAME` changes this one launch to
+gateway-token mode even when the folder uses `claudeai`. It skips local login
+verification and `proxy.auth_profile`, rejects inherited custom headers, and
+uses `ANTHROPIC_AUTH_TOKEN` for the gateway client key. Claude Code's plan
+usage bars are unavailable in this mode; its session cost is an estimate.
 It requires a folder proxy, a valid route name, and catalog entries for every
 rewritten model. It cannot be combined with `--account`, `--direct`, or
 `--ignore-pin`. On proxy failure or quota limits it stops without offering
