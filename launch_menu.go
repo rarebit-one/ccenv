@@ -21,9 +21,20 @@ type launchPreview struct {
 }
 
 func previewLaunch(c config, s selection, p profile, choice launchChoice) (launchPreview, error) {
+	if choice.Profile != "" {
+		var err error
+		p, err = requireProfile(c, choice.Profile)
+		if err != nil {
+			return launchPreview{}, err
+		}
+	}
 	accountName := choice.Account
 	if accountName == "" {
-		accountName = s.Name
+		if choice.Profile != "" {
+			accountName = choice.Profile
+		} else {
+			accountName = s.Name
+		}
 	}
 	accountProfile, err := requireProfile(c, accountName)
 	if err != nil {

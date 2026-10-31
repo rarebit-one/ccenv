@@ -32,6 +32,7 @@ type folderConfig struct {
 // without registering it locally.
 type launchChoice struct {
 	Name        string `json:"name"`
+	Profile     string `json:"profile,omitempty"`
 	Account     string `json:"account,omitempty"`
 	ProxyRoute  string `json:"proxy_route,omitempty"`
 	GatewayAuth bool   `json:"gateway_auth,omitempty"`
@@ -91,6 +92,9 @@ func parseDotfile(path string) (folderConfig, error) {
 		}
 		if choice.Account != "" && !validName.MatchString(choice.Account) {
 			return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: launch %s has an invalid account", path, choice.Name)
+		}
+		if choice.Profile != "" && (!validName.MatchString(choice.Profile) || choice.ProxyRoute == "") {
+			return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: launch %s needs a proxy_route and valid profile", path, choice.Name)
 		}
 		if choice.ProxyRoute != "" && (!validName.MatchString(choice.ProxyRoute) || folder.Proxy == nil) {
 			return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: launch %s needs a folder proxy and valid proxy_route", path, choice.Name)

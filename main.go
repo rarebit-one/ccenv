@@ -819,6 +819,11 @@ func selectProfile(c config, cwd, override string) (selection, error) {
 				}
 			}
 			for _, choice := range folder.Launches {
+				if choice.Profile != "" {
+					if _, err := requireProfile(c, choice.Profile); err != nil {
+						return selection{}, fmt.Errorf("%s: launch %s: %w", path, choice.Name, err)
+					}
+				}
 				if choice.Account != "" {
 					if _, err := requireProfile(c, choice.Account); err != nil {
 						return selection{}, fmt.Errorf("%s: launch %s: %w", path, choice.Name, err)
@@ -1017,6 +1022,7 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	baseRoute := s.Name
 	if c.ProxyOnly && s.Proxy == nil {
 		return fmt.Errorf("proxy-only mode requires a folder proxy; no proxy selected from %s", s.Source)
 	}
@@ -1031,6 +1037,13 @@ func run(args []string) error {
 		*account = chosen.Account
 		*proxyRoute = chosen.ProxyRoute
 		*gatewayAuth = chosen.GatewayAuth
+		if chosen.Profile != "" {
+			s.Name = chosen.Profile
+			p, err = requireProfile(c, s.Name)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	if *proxyRoute != "" {
 		if !validName.MatchString(*proxyRoute) {
@@ -1082,7 +1095,7 @@ func run(args []string) error {
 		if *proxyRoute != "" {
 			routeName = *proxyRoute
 		}
-		proxy, err := proxyForAccount(*s.Proxy, s.Name, routeName)
+		proxy, err := proxyForAccount(*s.Proxy, baseRoute, routeName)
 		if err != nil {
 			return err
 		}

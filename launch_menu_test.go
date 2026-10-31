@@ -22,6 +22,7 @@ func TestFolderLaunchValidation(t *testing.T) {
 		{"two targets", `{"profile":"work","proxy":{"url":"https://proxy.test","api_key_file":"/private/key"},"launches":[{"name":"both","account":"work","proxy_route":"ryan"}]}`, "exactly one"},
 		{"route without proxy", `{"profile":"work","launches":[{"name":"ryan","proxy_route":"ryan"}]}`, "folder proxy"},
 		{"gateway without route", `{"profile":"work","launches":[{"name":"work","account":"work","gateway_auth":true}]}`, "needs proxy_route"},
+		{"profile without route", `{"profile":"work","launches":[{"name":"other","account":"work","profile":"other"}]}`, "needs a proxy_route"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -38,6 +39,34 @@ func TestFolderLaunchValidation(t *testing.T) {
 				t.Fatalf("wanted %q, got %v", tc.want, err)
 			}
 		})
+	}
+}
+
+func TestPoolLaunchCanSelectAnotherConfigHome(t *testing.T) {
+	root := t.TempDir()
+	familyHome := filepath.Join(root, "family-home")
+	sidekickHome := filepath.Join(root, "sidekick-home")
+	c := config{ProxyOnly: true, Profiles: map[string]profile{
+		"family": {Dir: familyHome}, "sidekick": {Dir: sidekickHome},
+	}}
+	selector := `{"profile":"family","proxy":{"url":"https://proxy.test","api_key_file":"/private/key","model":"family/opus","default_models":{"opus":"family/opus","sonnet":"family/sonnet","haiku":"family/haiku","fable":"family/fable"}},"launches":[{"name":"sidekick","profile":"sidekick","proxy_route":"sidekick-pool","gateway_auth":true}]}`
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(selector), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := selectProfile(c, root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previews, err := folderLaunchPreviews(c, s, c.Profiles[s.Name])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(previews) != 1 || previews[0].ConfigHome != sidekickHome || previews[0].StorageHome != sidekickHome || previews[0].ProxyRoute != "sidekick-pool" || previews[0].ProxyModel != "sidekick-pool/opus" {
+		t.Fatalf("wrong global pool preview: %#v", previews)
+	}
+	c.Profiles = map[string]profile{"family": {Dir: familyHome}}
+	if _, err := selectProfile(c, root, ""); err == nil || !strings.Contains(err.Error(), `unknown profile "sidekick"`) {
+		t.Fatalf("unknown chosen config home did not stop selection: %v", err)
 	}
 }
 
