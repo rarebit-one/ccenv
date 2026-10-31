@@ -30,6 +30,7 @@ type profile struct {
 type config struct {
 	Default          string             `json:"default"`
 	ProxyOnly        bool               `json:"proxy_only,omitempty"`
+	HomeSelector     bool               `json:"home_selector,omitempty"`
 	ClaudePluginDirs []string           `json:"claude_plugin_dirs,omitempty"`
 	Profiles         map[string]profile `json:"profiles"`
 }
@@ -839,6 +840,17 @@ func selectProfile(c config, cwd, override string) (selection, error) {
 			break
 		}
 		dir = parent
+	}
+	if c.HomeSelector {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return selection{}, fmt.Errorf("home selector: %w", err)
+		}
+		path := filepath.Join(home, ".ccenv")
+		if _, err := os.Stat(path); err != nil {
+			return selection{}, fmt.Errorf("home selector %s: %w", path, err)
+		}
+		return selectProfile(c, home, "")
 	}
 	if c.Default == "" {
 		return selection{}, errors.New("no .ccenv found and no global default set")

@@ -154,6 +154,10 @@ For example, `~/.ccenv` can include
 `{"name":"sidekick","profile":"sidekick","proxy_route":"sidekick-pool","gateway_auth":true}`
 alongside a Family default profile and proxy. `ccenv current` shows each choice's
 actual config home before launch.
+Set `"home_selector": true` in the global config to also use `~/.ccenv` when
+running outside the home tree and no closer `.ccenv` exists. If the home
+selector is enabled but missing, selection stops instead of silently launching
+the global default.
 
 With multiple launches, `ccenv run --` opens a compact menu on `/dev/tty` before
 contacting the proxy. Up and down arrows (or `j` and `k`) highlight a choice;

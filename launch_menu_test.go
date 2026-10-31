@@ -70,6 +70,33 @@ func TestPoolLaunchCanSelectAnotherConfigHome(t *testing.T) {
 	}
 }
 
+func TestHomeSelectorAppliesOutsideHomeWhenNoCloserSelector(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	outside := filepath.Join(root, "outside")
+	for _, dir := range []string{home, outside} {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	if err := os.WriteFile(filepath.Join(home, ".ccenv"), []byte(`{"profile":"family"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c := config{HomeSelector: true, Profiles: map[string]profile{"family": {Dir: home}}}
+	s, err := selectProfile(c, outside, "")
+	if err != nil || s.Source != filepath.Join(home, ".ccenv") {
+		t.Fatalf("outside folder did not use home selector: %#v %v", s, err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, ".ccenv"), []byte(`{"profile":"family"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err = selectProfile(c, outside, "")
+	if err != nil || s.Source != filepath.Join(outside, ".ccenv") {
+		t.Fatalf("closer selector did not win: %#v %v", s, err)
+	}
+}
+
 func TestLaunchMenuShowsHomesAndAcceptsChoice(t *testing.T) {
 	s := selection{Source: "/workspace/.ccenv"}
 	previews := []launchPreview{
