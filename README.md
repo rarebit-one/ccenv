@@ -202,6 +202,14 @@ source, and proxy route before Claude starts. Press Enter to launch or `q` to
 cancel. Use `ccenv run --choice NAME --` to select one
 without a menu; an explicit `--account` or `--proxy-route` also skips it.
 Without a terminal, an ambiguous launch stops and asks for `--choice`.
+For a CLIProxyAPI gateway-auth launch whose route ends in `-pool`, a matching
+`-fallback` launch in the same folder is an explicit fallback. It must use the
+same config profile and gateway-auth setting. If the pool's configured models
+disappear from the gateway catalog or the gateway reports quota cooldown,
+`ccenv` checks the fallback route and launches through it when all configured
+models are available. It prints the route switch before starting Claude. The
+next launch checks the pool again, so it returns to the pool when available.
+An explicit `--proxy-route` does not switch accounts automatically.
 If the proxy fails and you accept direct fallback, the override account's
 pinned local login is used. When `proxy.auth_profile` is configured for the
 selected account, fallback uses that same-identity login instead. `--direct`

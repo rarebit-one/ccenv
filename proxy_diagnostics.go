@@ -16,6 +16,14 @@ type proxyAccountLimit struct {
 	cooldown bool
 }
 
+type proxyModelUnavailable struct {
+	model string
+}
+
+func (e *proxyModelUnavailable) Error() string {
+	return fmt.Sprintf("configured proxy model %q is not advertised; check the gateway account route and model settings", e.model)
+}
+
 func (e *proxyAccountLimit) Error() string {
 	message := "CLIProxyAPI account is rate limited"
 	if e.cooldown {
@@ -28,7 +36,7 @@ func (e *proxyAccountLimit) Error() string {
 }
 
 func missingProxyModel(client *http.Client, p proxyConfig, key, model string) error {
-	missing := fmt.Errorf("configured proxy model %q is not advertised; check the gateway account route and model settings", model)
+	missing := &proxyModelUnavailable{model: model}
 	if p.Provider != "cliproxyapi" {
 		return missing
 	}

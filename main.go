@@ -1035,6 +1035,7 @@ func run(args []string) error {
 		return err
 	}
 	baseRoute := s.Name
+	var selectedLaunch launchChoice
 	if c.ProxyOnly && s.Proxy == nil {
 		return fmt.Errorf("proxy-only mode requires a folder proxy; no proxy selected from %s", s.Source)
 	}
@@ -1047,6 +1048,7 @@ func run(args []string) error {
 			return err
 		}
 		*account = chosen.Account
+		selectedLaunch = chosen
 		*proxyRoute = chosen.ProxyRoute
 		*gatewayAuth = chosen.GatewayAuth
 		if chosen.Profile != "" {
@@ -1123,6 +1125,26 @@ func run(args []string) error {
 			return err
 		}
 		proxy, preflightErr := checkProxySites(proxy, key)
+		if preflightErr != nil && proxy.Provider == "cliproxyapi" && proxy.AuthMode == "gateway" {
+			var missing *proxyModelUnavailable
+			var limited *proxyAccountLimit
+			if errors.As(preflightErr, &missing) || errors.As(preflightErr, &limited) {
+				if fallbackRoute := configuredPoolFallback(s, selectedLaunch); fallbackRoute != "" {
+					fallback, fallbackErr := proxyForAccount(*s.Proxy, baseRoute, fallbackRoute)
+					if fallbackErr != nil {
+						return fallbackErr
+					}
+					fallback.AuthMode = "gateway"
+					fallback.AuthProfile = ""
+					if available, err := checkProxySites(fallback, key); err == nil {
+						fmt.Fprintf(os.Stderr, "ccenv: %s unavailable; switching to configured gateway route %s for this launch\n", routeName, fallbackRoute)
+						proxy, preflightErr, routeName = available, nil, fallbackRoute
+					} else {
+						preflightErr = fmt.Errorf("%w; configured fallback route %s unavailable: %v", preflightErr, fallbackRoute, err)
+					}
+				}
+			}
+		}
 		if preflightErr == nil {
 			if credentialsProfile.Dir != p.Dir {
 				if err := requireSeparateCredentialsSupport(); err != nil {
