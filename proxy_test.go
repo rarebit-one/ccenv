@@ -318,8 +318,13 @@ printf 'CREDENTIALS=%s\n' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
 		t.Fatal(err)
 	}
 	output, err = call("run", "--proxy-route", "ryan", "--")
-	if err == nil || !strings.Contains(output, "requires gateway-token mode") || strings.Contains(output, "DIR=") {
-		t.Fatalf("subscription proxy silently switched to gateway-token mode: %v %s", err, output)
+	if err != nil || !strings.Contains(output, "native claude.ai subscription login verified for work@example.test") ||
+		!strings.Contains(output, "TOKEN=\nMODEL=ryan/claude-test\n") ||
+		!strings.Contains(output, "SONNET=ryan/claude-test\nOPUS=ryan/claude-test\nHAIKU=ryan/claude-test\nSUBAGENT=ryan/claude-test\nFABLE=ryan/claude-test\n") ||
+		!strings.Contains(output, "HEADERS=x-api-key: test-client-key\n") ||
+		!strings.Contains(output, "CREDENTIALS="+personalDir+"\n") ||
+		!strings.Contains(output, "DIR="+filepath.Join(cacheDir, "ccenv", "config-overlays")+string(filepath.Separator)) {
+		t.Fatalf("subscription proxy route must preserve the local login and rewrite all models: %v %s", err, output)
 	}
 	t.Setenv("FAKE_EMAIL", "personal@example.test")
 	output, err = call("run", "--account", "personal", "--", "--model", "opus")
