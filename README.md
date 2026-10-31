@@ -186,6 +186,14 @@ It cannot be combined with `--account`, `--direct`, or `--ignore-pin`. If the
 proxy is unavailable, ccenv stops rather than falling back to a different
 direct account. The gateway must keep that route exclusive to the intended
 upstream credential. A folder's default `account` is ignored for this launch.
+For a folder with several permitted launches, add a `launches` array to its
+JSON `.ccenv`. Each entry has a unique `name` and either a registered `account`
+or a `proxy_route`; a proxy route may also set `gateway_auth: true`. Running
+`ccenv run --` opens a menu when more than one entry exists. It shows each
+choice's config home, secure storage home, authentication source, and proxy
+route before Claude starts. Use `ccenv run --choice NAME --` to select one
+without a menu; an explicit `--account` or `--proxy-route` also skips it.
+Without a terminal, an ambiguous launch stops and asks for `--choice`.
 If the proxy fails and you accept direct fallback, the override account's
 pinned local login is used. When `proxy.auth_profile` is configured for the
 selected account, fallback uses that same-identity login instead. `--direct`
@@ -278,6 +286,7 @@ profile's Desktop running. The launcher and Omarchy commands are Linux-only.
 | `ccenv run -- [CLAUDE_ARGS...]` | Launch Claude with the selected profile, forwarding arguments unchanged. |
 | `ccenv run --profile NAME -- [CLAUDE_ARGS...]` | Launch once with an explicit profile. |
 | `ccenv run --account NAME -- [CLAUDE_ARGS...]` | Use the selected config with another registered profile's pinned credentials. |
+| `ccenv run --choice NAME -- [CLAUDE_ARGS...]` | Select a named launch from the folder's `.ccenv` without the menu. |
 | `ccenv run --proxy-route NAME -- [CLAUDE_ARGS...]` | Change the proxy model route for one launch, preserving the folder's authentication mode and without direct fallback. |
 | `ccenv run --proxy-route NAME --gateway-auth -- [CLAUDE_ARGS...]` | Use the proxy client token for that route without a local Claude login or plan usage bars. |
 | `ccenv run --ignore-pin -- [CLAUDE_ARGS...]` | For one launch, bypass the selected profile's account pin while showing the reported login. |

@@ -40,10 +40,11 @@ type authStatus struct {
 }
 
 type selection struct {
-	Name    string
-	Source  string
-	Account string
-	Proxy   *proxyConfig
+	Name     string
+	Source   string
+	Account  string
+	Launches []launchChoice
+	Proxy    *proxyConfig
 }
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -93,9 +94,9 @@ func dispatch(args []string) error {
   local -a ccenv_args=()
   while (($#)); do
     case "${1-}" in
-      --profile|--account|--proxy-route)
+      --profile|--account|--proxy-route|--choice)
         if (($# < 2)); then
-          printf 'usage: cc [--profile <name>] [--account <name>] [--proxy-route <name>] [--gateway-auth] [--ignore-pin] [--direct] [--] [CLAUDE_ARGS...]\n' >&2
+          printf 'usage: cc [--profile <name>] [--choice <name>] [--account <name>] [--proxy-route <name>] [--gateway-auth] [--ignore-pin] [--direct] [--] [CLAUDE_ARGS...]\n' >&2
           return 2
         fi
         ccenv_args+=("$1" "$2")
@@ -189,7 +190,7 @@ func usage() {
   ccenv list [--json]                     List registered profiles
   ccenv discover                          Find unregistered Claude config directories
   ccenv check                             Verify logins and flag duplicate accounts
-  ccenv run [--profile <name>] [--account <name>] [--proxy-route <name>] [--gateway-auth] [--ignore-pin] [--direct] -- [args]
+  ccenv run [--profile <name>] [--choice <name>] [--account <name>] [--proxy-route <name>] [--gateway-auth] [--ignore-pin] [--direct] -- [args]
                                            Launch Claude Code
   ccenv desktop [--profile <name>] [-- args]
                                            Launch Claude Desktop with the profile's own app data
@@ -377,6 +378,23 @@ func displaceOverlayEntry(cacheDir, overlay, name string) error {
 	return nil
 }
 
+func splitOverlayPath(configDir, credentialsDir string) (string, error) {
+	configDir, err := filepath.Abs(configDir)
+	if err != nil {
+		return "", err
+	}
+	credentialsDir, err = filepath.Abs(credentialsDir)
+	if err != nil {
+		return "", err
+	}
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("find ccenv cache directory: %w", err)
+	}
+	hash := sha256.Sum256([]byte(configDir + "\x00" + credentialsDir))
+	return filepath.Join(cacheDir, "ccenv", "config-overlays", hex.EncodeToString(hash[:16])), nil
+}
+
 // splitConfigDir creates a per-config/per-account view of the config directory.
 // Claude writes the active account identity cache to .claude.json even when its
 // credentials come from a separate store. Keep that mutable cache private to
@@ -394,8 +412,10 @@ func splitConfigDir(configDir, credentialsDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("find ccenv cache directory: %w", err)
 	}
-	hash := sha256.Sum256([]byte(configDir + "\x00" + credentialsDir))
-	overlay := filepath.Join(cacheDir, "ccenv", "config-overlays", hex.EncodeToString(hash[:16]))
+	overlay, err := splitOverlayPath(configDir, credentialsDir)
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(overlay, 0700); err != nil {
 		return "", fmt.Errorf("create split config overlay: %w", err)
 	}
@@ -734,7 +754,14 @@ func selectProfile(c config, cwd, override string) (selection, error) {
 					return selection{}, fmt.Errorf("%s: account: %w", path, err)
 				}
 			}
-			return selection{Name: folder.Profile, Source: path, Account: folder.Account, Proxy: folder.Proxy}, nil
+			for _, choice := range folder.Launches {
+				if choice.Account != "" {
+					if _, err := requireProfile(c, choice.Account); err != nil {
+						return selection{}, fmt.Errorf("%s: launch %s: %w", path, choice.Name, err)
+					}
+				}
+			}
+			return selection{Name: folder.Profile, Source: path, Account: folder.Account, Launches: folder.Launches, Proxy: folder.Proxy}, nil
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return selection{}, err
 		}
@@ -786,7 +813,21 @@ func current() error {
 		} else if s.Proxy.AuthProfile != "" {
 			directName = s.Proxy.AuthProfile
 		}
-		fmt.Printf("Proxy: %s (direct fallback account: %s)\n", s.Proxy.URL, directName)
+		if len(s.Launches) > 0 {
+			fmt.Printf("Proxy: %s\n", s.Proxy.URL)
+		} else {
+			fmt.Printf("Proxy: %s (direct fallback account: %s)\n", s.Proxy.URL, directName)
+		}
+	}
+	if len(s.Launches) > 0 {
+		previews, err := folderLaunchPreviews(c, s, p)
+		if err != nil {
+			return err
+		}
+		fmt.Println("Launch choices:")
+		for i, preview := range previews {
+			printLaunchPreview(os.Stdout, i+1, preview)
+		}
 	}
 	return nil
 }
@@ -876,6 +917,7 @@ func refuseOverrideEnv() error {
 func run(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	name := fs.String("profile", "", "profile override")
+	choiceName := fs.String("choice", "", "named launch from the folder selector")
 	account := fs.String("account", "", "registered account profile whose credentials to use")
 	proxyRoute := fs.String("proxy-route", "", "proxy model route for this launch")
 	gatewayAuth := fs.Bool("gateway-auth", false, "use the proxy client token without selecting a local Claude login")
@@ -884,16 +926,11 @@ func run(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if *choiceName != "" && (!validName.MatchString(*choiceName) || *name != "" || *account != "" || *proxyRoute != "" || *gatewayAuth || *direct || *ignorePin) {
+		return errors.New("--choice requires a folder launch name and cannot be combined with other launch selection flags")
+	}
 	if *gatewayAuth && *proxyRoute == "" {
 		return errors.New("--gateway-auth requires --proxy-route")
-	}
-	if *proxyRoute != "" {
-		if !validName.MatchString(*proxyRoute) {
-			return fmt.Errorf("invalid proxy route %q", *proxyRoute)
-		}
-		if *account != "" || *direct || *ignorePin {
-			return errors.New("--proxy-route cannot be combined with --account, --direct, or --ignore-pin")
-		}
 	}
 	c, err := loadConfig()
 	if err != nil {
@@ -902,6 +939,26 @@ func run(args []string) error {
 	s, p, err := selected(c, *name)
 	if err != nil {
 		return err
+	}
+	if len(s.Launches) > 0 && (*direct || *ignorePin) && *account == "" && *proxyRoute == "" {
+		return errors.New("--direct and --ignore-pin require an explicit --account or --profile when folder launches are configured")
+	}
+	if *choiceName != "" || (len(s.Launches) > 0 && *account == "" && *proxyRoute == "") {
+		chosen, err := selectFolderLaunch(c, s, p, *choiceName)
+		if err != nil {
+			return err
+		}
+		*account = chosen.Account
+		*proxyRoute = chosen.ProxyRoute
+		*gatewayAuth = chosen.GatewayAuth
+	}
+	if *proxyRoute != "" {
+		if !validName.MatchString(*proxyRoute) {
+			return fmt.Errorf("invalid proxy route %q", *proxyRoute)
+		}
+		if *account != "" || *direct || *ignorePin {
+			return errors.New("--proxy-route cannot be combined with --account, --direct, or --ignore-pin")
+		}
 	}
 	if *proxyRoute != "" && s.Proxy == nil {
 		return errors.New("--proxy-route requires a folder proxy")

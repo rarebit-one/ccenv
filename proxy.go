@@ -22,8 +22,19 @@ type folderConfig struct {
 	Profile string `json:"profile"`
 	// Account is the registered profile whose login this folder uses by
 	// default, as if every launch passed --account. An explicit --account wins.
-	Account string       `json:"account,omitempty"`
-	Proxy   *proxyConfig `json:"proxy,omitempty"`
+	Account  string         `json:"account,omitempty"`
+	Launches []launchChoice `json:"launches,omitempty"`
+	Proxy    *proxyConfig   `json:"proxy,omitempty"`
+}
+
+// launchChoice is one explicitly allowed launch for a folder. A local account
+// selects a registered login; a proxy route can select an upstream credential
+// without registering it locally.
+type launchChoice struct {
+	Name        string `json:"name"`
+	Account     string `json:"account,omitempty"`
+	ProxyRoute  string `json:"proxy_route,omitempty"`
+	GatewayAuth bool   `json:"gateway_auth,omitempty"`
 }
 
 // proxyModelAliases are the Claude Code model aliases a proxy can route.
@@ -65,6 +76,28 @@ func parseDotfile(path string) (folderConfig, error) {
 	}
 	if folder.Account != "" && !validName.MatchString(folder.Account) {
 		return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: account must be a profile name", path)
+	}
+	if len(folder.Launches) > 0 && folder.Account != "" {
+		return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: account and launches cannot be combined", path)
+	}
+	seen := map[string]bool{}
+	for _, choice := range folder.Launches {
+		if !validName.MatchString(choice.Name) || strings.Trim(choice.Name, "0123456789") == "" || seen[choice.Name] {
+			return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: launch names must be unique nonnumeric profile-style names", path)
+		}
+		seen[choice.Name] = true
+		if (choice.Account == "") == (choice.ProxyRoute == "") {
+			return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: launch %s needs exactly one of account or proxy_route", path, choice.Name)
+		}
+		if choice.Account != "" && !validName.MatchString(choice.Account) {
+			return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: launch %s has an invalid account", path, choice.Name)
+		}
+		if choice.ProxyRoute != "" && (!validName.MatchString(choice.ProxyRoute) || folder.Proxy == nil) {
+			return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: launch %s needs a folder proxy and valid proxy_route", path, choice.Name)
+		}
+		if choice.GatewayAuth && choice.ProxyRoute == "" {
+			return folderConfig{}, fmt.Errorf("invalid .ccenv at %s: launch %s needs proxy_route for gateway_auth", path, choice.Name)
+		}
 	}
 	if folder.Proxy != nil {
 		if err := validateProxy(folder.Proxy, filepath.Dir(path)); err != nil {

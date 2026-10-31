@@ -105,6 +105,48 @@ It ignores the folder's default `account` for this proxy-only launch.
 Caller credential and gateway environment overrides remain prohibited in both
 modes. Proxy settings do not apply to Claude Desktop.
 
+### Folder launch menu
+
+A JSON `.ccenv` may add `launches` to list the launches allowed from that
+folder. Each entry has a unique `name` and exactly one of `account` (a
+registered local profile) or `proxy_route` (a gateway route).
+`gateway_auth: true` is valid only with `proxy_route` and selects the gateway
+client token without a local Claude login. `launches` and a top-level
+`account` cannot be combined. For example:
+
+```json
+{
+  "profile": "sidekick",
+  "launches": [
+    {"name": "jaryl", "account": "sidekick"},
+    {"name": "ryan", "proxy_route": "sidekick-ryan", "gateway_auth": true}
+  ],
+  "proxy": {
+    "url": "https://gateway.example",
+    "api_key_file": "~/.config/ccenv/keys/sidekick",
+    "auth_mode": "claudeai",
+    "model": "sidekick/claude-opus-5-5",
+    "default_models": {
+      "opus": "sidekick/claude-opus-5-5",
+      "sonnet": "sidekick/claude-sonnet-4-6",
+      "haiku": "sidekick/claude-haiku-4-5-20251001"
+    }
+  }
+}
+```
+
+With multiple launches, `ccenv run --` prompts on `/dev/tty` before contacting
+the proxy. The menu shows the config home, actual Claude config directory when
+a split overlay is needed, secure storage home, authentication source, and
+proxy route. A blank answer cancels. Without an interactive terminal, selection
+stops and names the available `--choice` values. A single launch is selected
+automatically. `ccenv run --choice NAME --` selects one by name without a
+terminal and prints the same launch details. An explicit `--profile`,
+`--account`, or `--proxy-route` bypasses the folder menu. Unknown or invalid
+choices stop the launch. For a direct launch, supply an explicit `--account`
+or `--profile` with `--direct`; direct and pin-bypass flags do not combine with
+the menu. `ccenv current` lists the configured choices and their directories.
+
 This preflight happens at process launch. ccenv replaces itself with Claude and
 cannot switch a running session if the proxy fails later.
 
