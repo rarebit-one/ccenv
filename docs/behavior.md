@@ -380,13 +380,23 @@ The diagnostic has the same timeout and redirect restrictions as the catalog
 request. No management key is needed.
 
 A structured rate-limit response reports the account and gateway retry time,
-when supplied. ccenv stops without offering direct fallback because the same
-subscription is still limited. The retry time is a gateway estimate, not proof
-that quota has reset. Wait or explicitly choose another configured account:
+when supplied. For a selected gateway-auth `-pool` launch, ccenv may use a
+matching, explicitly configured `-fallback` launch instead. Both launches must
+use the same config profile and gateway-auth setting, and all configured models
+must be advertised on the fallback route. ccenv prints the change before Claude
+starts. Each new launch rechecks the pool and returns to it when available.
+An explicit `--proxy-route` does not opt into this behavior.
+
+Without that matching fallback, ccenv stops without offering direct fallback
+because the same subscription is still limited. The retry time is a gateway
+estimate, not proof that quota has reset. Wait or explicitly choose another
+configured account:
 
 ```sh
 cc --account family --model opus
 ```
 
 Missing routes, unsupported diagnostics, and gateway outages still follow the
-normal direct-fallback rules. ccenv never automatically changes accounts.
+normal direct-fallback rules. A missing model can trigger the configured
+gateway fallback even when CLIProxyAPI does not return a structured cooldown
+diagnostic. ccenv does not automatically change local login accounts.

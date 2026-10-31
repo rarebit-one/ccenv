@@ -106,6 +106,21 @@ func folderLaunchPreviews(c config, s selection, p profile) ([]launchPreview, er
 	return previews, nil
 }
 
+// A matching fallback launch is an explicit opt-in to changing the serving
+// gateway account when the selected pool has no usable models.
+func configuredPoolFallback(s selection, selected launchChoice) string {
+	if !strings.HasSuffix(selected.ProxyRoute, "-pool") {
+		return ""
+	}
+	want := strings.TrimSuffix(selected.ProxyRoute, "-pool") + "-fallback"
+	for _, choice := range s.Launches {
+		if choice.ProxyRoute == want && choice.Profile == selected.Profile && choice.GatewayAuth == selected.GatewayAuth {
+			return want
+		}
+	}
+	return ""
+}
+
 func printLaunchPreview(w io.Writer, number int, preview launchPreview) {
 	if number > 0 {
 		fmt.Fprintf(w, "  %d) %s\n", number, preview.Choice.Name)

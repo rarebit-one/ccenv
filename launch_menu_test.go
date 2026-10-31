@@ -42,6 +42,28 @@ func TestFolderLaunchValidation(t *testing.T) {
 	}
 }
 
+func TestConfiguredPoolFallbackRequiresMatchingLaunch(t *testing.T) {
+	pool := launchChoice{ProxyRoute: "fundbright-pool", GatewayAuth: true, Profile: "fundbright"}
+	fallback := launchChoice{ProxyRoute: "fundbright-fallback", GatewayAuth: true, Profile: "fundbright"}
+	for _, tc := range []struct {
+		name   string
+		choice launchChoice
+		want   string
+	}{
+		{"matching", fallback, "fundbright-fallback"},
+		{"different authentication", launchChoice{ProxyRoute: fallback.ProxyRoute, Profile: fallback.Profile}, ""},
+		{"different profile", launchChoice{ProxyRoute: fallback.ProxyRoute, GatewayAuth: true}, ""},
+		{"different route", launchChoice{ProxyRoute: "rarebit-fallback", GatewayAuth: true, Profile: fallback.Profile}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := configuredPoolFallback(selection{Launches: []launchChoice{pool, tc.choice}}, pool)
+			if got != tc.want {
+				t.Fatalf("fallback route = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPoolLaunchCanSelectAnotherConfigHome(t *testing.T) {
 	root := t.TempDir()
 	familyHome := filepath.Join(root, "family-home")

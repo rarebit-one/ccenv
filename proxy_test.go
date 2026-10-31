@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 )
@@ -96,6 +97,92 @@ func TestProxyPreflightUsesBackupSiteWhenPrimaryFails(t *testing.T) {
 	selected, err := checkProxySites(p, "client-key")
 	if err != nil || selected.URL != backup.URL {
 		t.Fatalf("backup site not selected: %s, %v", selected.URL, err)
+	}
+}
+
+func TestPoolLaunchSwitchesToConfiguredFallback(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "ccenv")
+	if output, err := exec.Command("go", "build", "-buildvcs=false", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v %s", err, output)
+	}
+	claude := filepath.Join(root, "claude")
+	if err := os.WriteFile(claude, []byte("#!/bin/sh\nprintf 'MODEL=%s\\nSONNET=%s\\nOPUS=%s\\nHAIKU=%s\\n' \"$ANTHROPIC_MODEL\" \"$ANTHROPIC_DEFAULT_SONNET_MODEL\" \"$ANTHROPIC_DEFAULT_OPUS_MODEL\" \"$ANTHROPIC_DEFAULT_HAIKU_MODEL\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	keyFile := filepath.Join(root, "key")
+	if err := os.WriteFile(keyFile, []byte("test-client-key"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "config.json")
+	if err := os.WriteFile(configFile, []byte(fmt.Sprintf(`{"proxy_only":true,"profiles":{"fundbright":{"dir":%q}}}`, root)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var poolHealthy atomic.Bool
+	var fallbackHealthy atomic.Bool
+	fallbackHealthy.Store(true)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			if r.Header.Get("Authorization") != "Bearer test-client-key" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			models := `{"data":[`
+			if fallbackHealthy.Load() {
+				models += `{"id":"fundbright-fallback/claude-test"}`
+			}
+			if poolHealthy.Load() {
+				if fallbackHealthy.Load() {
+					models += `,`
+				}
+				models += `{"id":"fundbright-pool/claude-test"}`
+			}
+			fmt.Fprint(w, models+`]}`)
+			return
+		}
+		if r.URL.Path != "/v1/messages/count_tokens" || r.Header.Get("X-Api-Key") != "test-client-key" {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		fmt.Fprint(w, `{"input_tokens":1}`)
+	}))
+	defer server.Close()
+	selector := fmt.Sprintf(`{"profile":"fundbright","proxy":{"url":%q,"api_key_file":%q,"provider":"cliproxyapi","model":"fundbright/claude-test","default_models":{"sonnet":"fundbright/claude-test","opus":"fundbright/claude-test","haiku":"fundbright/claude-test"}},"launches":[{"name":"pool","proxy_route":"fundbright-pool","gateway_auth":true},{"name":"fallback","proxy_route":"fundbright-fallback","gateway_auth":true}]}`, server.URL, keyFile)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(selector), 0600); err != nil {
+		t.Fatal(err)
+	}
+	call := func() (string, error) {
+		cmd := exec.Command(bin, "run", "--choice", "pool", "--")
+		cmd.Dir = root
+		cmd.Env = testCLIEnv(configFile, claude)
+		output, err := cmd.CombinedOutput()
+		return string(output), err
+	}
+	output, err := call()
+	if err != nil || !strings.Contains(output, "switching to configured gateway route fundbright-fallback") ||
+		!strings.Contains(output, "with fundbright-fallback gateway route") ||
+		!strings.Contains(output, "MODEL=fundbright-fallback/claude-test\nSONNET=fundbright-fallback/claude-test\nOPUS=fundbright-fallback/claude-test\nHAIKU=fundbright-fallback/claude-test\n") {
+		t.Fatalf("unavailable pool did not launch through fallback: %v %s", err, output)
+	}
+	poolHealthy.Store(true)
+	output, err = call()
+	if err != nil || strings.Contains(output, "switching to configured gateway route") || !strings.Contains(output, "MODEL=fundbright-pool/claude-test\n") {
+		t.Fatalf("healthy pool did not retain its route: %v %s", err, output)
+	}
+	poolHealthy.Store(false)
+	fallbackHealthy.Store(false)
+	output, err = call()
+	if err == nil || strings.Contains(output, "MODEL=") || !strings.Contains(output, "configured fallback route fundbright-fallback unavailable") {
+		t.Fatalf("unavailable fallback launched Claude: %v %s", err, output)
+	}
+	fallbackHealthy.Store(true)
+	withoutFallback := strings.Replace(selector, `,{"name":"fallback","proxy_route":"fundbright-fallback","gateway_auth":true}`, "", 1)
+	if err := os.WriteFile(filepath.Join(root, ".ccenv"), []byte(withoutFallback), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = call()
+	if err == nil || strings.Contains(output, "MODEL=") {
+		t.Fatalf("unconfigured fallback launched Claude: %v %s", err, output)
 	}
 }
 
