@@ -145,6 +145,16 @@ client token without a local Claude login. `launches` and a top-level
 }
 ```
 
+A home-level `.ccenv` can be a global pool picker for directories under that
+home. A route choice may set `profile` to use another registered config home,
+while retaining the home selector's proxy endpoint and key. Its proxy model and
+defaults use the home selector's top-level `profile` route prefix; ccenv rewrites
+them to the chosen `proxy_route`. A closer workspace `.ccenv` takes precedence.
+For example, `~/.ccenv` can include
+`{"name":"sidekick","profile":"sidekick","proxy_route":"sidekick-pool","gateway_auth":true}`
+alongside a Family default profile and proxy. `ccenv current` shows each choice's
+actual config home before launch.
+
 With multiple launches, `ccenv run --` opens a compact menu on `/dev/tty` before
 contacting the proxy. Up and down arrows (or `j` and `k`) highlight a choice;
 Enter launches it and `q` cancels. The detail panel shows the selected config
