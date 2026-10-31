@@ -135,10 +135,13 @@ client token without a local Claude login. `launches` and a top-level
 }
 ```
 
-With multiple launches, `ccenv run --` prompts on `/dev/tty` before contacting
-the proxy. The menu shows the config home, actual Claude config directory when
-a split overlay is needed, secure storage home, authentication source, and
-proxy route. A blank answer cancels. Without an interactive terminal, selection
+With multiple launches, `ccenv run --` opens a compact menu on `/dev/tty` before
+contacting the proxy. Up and down arrows (or `j` and `k`) highlight a choice;
+Enter launches it and `q` cancels. The detail panel shows the selected config
+home, actual Claude config directory when a split overlay is needed, secure
+storage home, authentication source, proxy route, and model. A terminal without
+cursor controls uses the numbered line prompt, where a blank answer cancels.
+Without an interactive terminal, selection
 stops and names the available `--choice` values. A single launch is selected
 automatically. `ccenv run --choice NAME --` selects one by name without a
 terminal and prints the same launch details. An explicit `--profile`,
@@ -146,6 +149,10 @@ terminal and prints the same launch details. An explicit `--profile`,
 choices stop the launch. For a direct launch, supply an explicit `--account`
 or `--profile` with `--direct`; direct and pin-bypass flags do not combine with
 the menu. `ccenv current` lists the configured choices and their directories.
+
+To require the gateway for a workspace, use a `proxy_route` launch with
+`gateway_auth: true` even if it has just one choice. An explicit route stops
+on gateway failure rather than offering a direct local login.
 
 This preflight happens at process launch. ccenv replaces itself with Claude and
 cannot switch a running session if the proxy fails later.

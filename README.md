@@ -189,9 +189,10 @@ upstream credential. A folder's default `account` is ignored for this launch.
 For a folder with several permitted launches, add a `launches` array to its
 JSON `.ccenv`. Each entry has a unique `name` and either a registered `account`
 or a `proxy_route`; a proxy route may also set `gateway_auth: true`. Running
-`ccenv run --` opens a menu when more than one entry exists. It shows each
-choice's config home, secure storage home, authentication source, and proxy
-route before Claude starts. Use `ccenv run --choice NAME --` to select one
+`ccenv run --` opens an arrow-key menu when more than one entry exists. It shows
+the highlighted choice's config home, secure storage home, authentication
+source, and proxy route before Claude starts. Press Enter to launch or `q` to
+cancel. Use `ccenv run --choice NAME --` to select one
 without a menu; an explicit `--account` or `--proxy-route` also skips it.
 Without a terminal, an ambiguous launch stops and asks for `--choice`.
 If the proxy fails and you accept direct fallback, the override account's
