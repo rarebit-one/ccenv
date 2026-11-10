@@ -22,8 +22,8 @@ Anthropic.
   one from the caller. Desktop logins cannot be pinned; say so rather than
   implying they are verified. `desktop install`/`uninstall` touch only entries
   marked `X-Ccenv-Managed=true`.
-- `ccenv list --json` is the contract the embedded Omarchy plugin
-  (`omarchy/rarebit.ccenv`) reads. Change both together.
+- `ccenv list --json` is a machine-readable contract for launchers and scripts.
+  Keep its fields backward compatible.
 - The interactive `cc` Bash function belongs in `ccenv init bash`; the bare
   `ccenv run --` command must work without shell setup.
 

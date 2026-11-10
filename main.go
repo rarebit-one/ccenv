@@ -165,8 +165,6 @@ func dispatch(args []string) error {
 		return discover()
 	case "desktop":
 		return desktop(args[1:])
-	case "omarchy":
-		return omarchy(args[1:])
 	case "check":
 		if len(args) != 1 {
 			return errors.New("usage: ccenv check")
@@ -201,7 +199,6 @@ func usage() {
   ccenv desktop [--profile <name>] [-- args]
                                            Launch Claude Desktop with the profile's own app data
   ccenv desktop install | uninstall       Manage per-profile app launchers and claude:// routing
-  ccenv omarchy install                   Install the Omarchy bar plugin (rarebit.ccenv)
   ccenv init bash                         Print the interactive cc shell function
   ccenv version                           Print the installed version
 `)

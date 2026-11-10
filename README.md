@@ -268,14 +268,6 @@ two profiles at once, finish one before starting the other. `ccenv desktop
 uninstall` removes only the entries ccenv wrote. Install the launchers again
 after you add or remove a profile.
 
-On Omarchy, `ccenv omarchy install` adds the `rarebit.ccenv` bar plugin, then
-`omarchy plugin enable rarebit.ccenv` turns it on. It lists your profiles from
-`ccenv list --json`, shows which ones have Desktop running, and opens a profile,
-a new chat, or a new Claude Code session without a terminal. Reinstall it after
-you move or upgrade the `ccenv` binary, because it records the binary's
-absolute path, then run `omarchy-restart-shell`: the shell keeps the old path
-cached across hot reloads.
-
 Desktop on Linux is the official beta package (Debian and Ubuntu; Arch users
 can install the AUR `claude-desktop` repackage). Set `CCENV_DESKTOP_BIN` if its
 launcher is not `claude-desktop` on `PATH`.
@@ -285,7 +277,7 @@ On macOS, `ccenv desktop` finds `Claude.app` in `/Applications` or
 own session, so closing the terminal does not quit it. Two limits apply there.
 macOS delivers `claude://` links to the app bundle rather than to a command,
 so ccenv cannot route a sign-in link to a profile: sign in with only that
-profile's Desktop running. The launcher and Omarchy commands are Linux-only.
+profile's Desktop running. The launcher commands are Linux-only.
 
 ## Commands
 
@@ -308,7 +300,6 @@ profile's Desktop running. The launcher and Omarchy commands are Linux-only.
 | `ccenv run --ignore-pin -- [CLAUDE_ARGS...]` | For one launch, bypass the selected profile's account pin while showing the reported login. |
 | `ccenv desktop [--profile NAME] [-- ARGS...]` | Launch Claude Desktop with the profile's own user data directory and `CLAUDE_CONFIG_DIR`. |
 | `ccenv desktop install` / `uninstall` | Write or remove per-profile app launchers and the `claude://` link router (Linux). |
-| `ccenv omarchy install [--dir DIR]` | Install the Omarchy bar plugin `rarebit.ccenv`. |
 | `ccenv init bash` | Print the interactive `cc` shell function. |
 | `ccenv version` | Print the installed version. |
 
