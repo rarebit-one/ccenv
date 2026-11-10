@@ -193,10 +193,8 @@ func TestDesktopCLI(t *testing.T) {
 	}
 
 	if runtime.GOOS != "linux" {
-		for _, args := range [][]string{{"desktop", "install"}, {"omarchy", "install", "--dir", filepath.Join(root, "plugins")}} {
-			if out, err = call(nil, args...); err == nil || !strings.Contains(out, "Linux only") {
-				t.Fatalf("%v must refuse off Linux: %v\n%s", args, err, out)
-			}
+		if out, err = call(nil, "desktop", "install"); err == nil || !strings.Contains(out, "Linux only") {
+			t.Fatalf("desktop install must refuse off Linux: %v\n%s", err, out)
 		}
 		return
 	}
@@ -243,24 +241,6 @@ func TestDesktopCLI(t *testing.T) {
 		t.Fatalf("install must not overwrite a handler it did not write:\n%s", out)
 	}
 
-	plugins := filepath.Join(root, "omarchy", "plugins")
-	if out, err = call(nil, "omarchy", "install", "--dir", plugins); err != nil || !strings.Contains(out, "omarchy plugin enable") {
-		t.Fatalf("omarchy install: %v\n%s", err, out)
-	}
-	if err := os.WriteFile(filepath.Join(root, "omarchy", "shell.json"), []byte(`{"plugins":["rarebit.ccenv"]}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if out, err = call(nil, "omarchy", "install", "--dir", plugins); err != nil || strings.Contains(out, "omarchy plugin enable") || !strings.Contains(out, "omarchy-restart-shell") {
-		t.Fatalf("omarchy reinstall of an enabled plugin: %v\n%s", err, out)
-	}
-	for _, f := range []string{"manifest.json", "BarWidget.qml", "Panel.qml"} {
-		if _, err := os.Stat(filepath.Join(plugins, omarchyPluginID, f)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if b, _ := os.ReadFile(filepath.Join(plugins, omarchyPluginID, "Ccenv.js")); !strings.Contains(string(b), `var BIN = "`+bin+`"`) {
-		t.Fatalf("Ccenv.js must pin the binary:\n%s", b)
-	}
 }
 
 func TestDiscoverSkipsRegisteredAndNonConfigDirs(t *testing.T) {

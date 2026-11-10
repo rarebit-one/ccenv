@@ -461,7 +461,7 @@ func refreshDesktopDatabase(apps string) {
 	}
 }
 
-// notifyDesktopError surfaces a failed launch from a launcher or bar plugin,
+// notifyDesktopError surfaces a failed launch from an app launcher,
 // where nobody sees stderr.
 func notifyDesktopError(err error) {
 	if info, statErr := os.Stderr.Stat(); statErr == nil && info.Mode()&os.ModeCharDevice != 0 {
@@ -482,8 +482,8 @@ type listedProfile struct {
 	DesktopRunning bool   `json:"desktop_running"`
 }
 
-// listJSON is the machine-readable registry view for launchers such as the
-// Omarchy plugin. It reads no credentials and runs no Claude command.
+// listJSON is the machine-readable registry view for launchers and scripts.
+// It reads no credentials and runs no Claude command.
 func listJSON() error {
 	c, err := loadConfig()
 	if err != nil {
