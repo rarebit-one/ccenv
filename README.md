@@ -343,7 +343,7 @@ publication; it does not apply retroactively to v0.1.0–v0.1.2.
 
 ## License
 
-Copyright (C) 2026 Jaryl Sim.
+Copyright (C) 2026 Rarebit One.
 
 Licensed under the GNU General Public License, version 3 or (at your option)
 any later version. See [LICENSE](LICENSE).
